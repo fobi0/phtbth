@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Local Photobooth</title>
+  <link rel="stylesheet" href="style.css">
+  <link href="https://fonts.googleapis.com/css2?family=Pacifico&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="fun-frame"></div>
+  <div id="flash" class="flash"></div>
+  
+  <div class="app-container">
+    <header class="top-header">
+      <button id="settingsBtn" class="btn-settings" title="Settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V7a1.65 1.65 0 0 0 1.51 1H21a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1-2.83 0l-.06.06A1.65 1.65 0 0 0 19.4 9z"/>
+        </svg>
+      </button>
+      <h1>Photobooth</h1>
+      
+      <div id="settingsModal" class="modal">
+        <div class="modal-content">
+          <h3>Settings</h3>
+          <div class="modal-section">
+            <label>Camera:</label>
+            <div class="camera-selector">
+              <select id="cameraList"></select>
+              <button id="refreshCameras" class="btn-refresh" title="Refresh camera list">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M23 4v6h-6"/>
+                  <path d="M1 20v-6h6"/>
+                  <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+          <button id="closeSettings" class="modal-close">Close</button>
+        </div>
+      </div>
+    </header>
+    
+    <main class="camera-section">
+      <div class="preview-wrapper">
+        <div class="frame frame-tl"></div>
+        <div class="frame frame-tr"></div>
+        <div class="frame frame-bl"></div>
+        <div class="frame frame-br"></div>
+        <div class="balloon balloon-1"></div>
+        <div class="balloon balloon-2"></div>
+        <div class="balloon balloon-3"></div>
+        <video id="preview" autoplay playsinline muted></video>
+        <div id="countdown" class="countdown"></div>
+      </div>
+      
+      <div class="filter-controls">
+        <button id="filter-none" class="filter-btn active" data-filter="none" title="No filter">Normal</button>
+        <button id="filter-vintage" class="filter-btn" data-filter="vintage" title="Vintage warm">Vintage</button>
+        <button id="filter-polaroid" class="filter-btn" data-filter="polaroid" title="Classic Polaroid">Polaroid</button>
+        <button id="filter-noir" class="filter-btn" data-filter="noir" title="Black & white">Noir</button>
+      </div>
+      
+      <div class="controls">
+        <button id="capture1" class="btn btn-single" title="Take single photo">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+            <circle cx="12" cy="13" r="4"/>
+          </svg>
+        </button>
+        <button id="capture3" class="btn btn-burst" title="Take series (3 stacked)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="6" y="4" width="12" height="4" rx="1"/>
+            <rect x="6" y="10" width="12" height="4" rx="1"/>
+            <rect x="6" y="16" width="12" height="4" rx="1"/>
+          </svg>
+        </button>
+      </div>
+      
+      <div class="status" id="status"></div>
+      <div class="keyboard-hint">Press <kbd>Space</kbd> for single • <kbd>B</kbd> for collage</div>
+    </main>
+    
+    <aside class="sidebar">
+      <h2>Your Photos</h2>
+      <div id="photoGallery" class="photo-grid"></div>
+    </aside>
+  </div>
+  <script src="script.js"></script>
+</body>
+</html>
