@@ -10,7 +10,6 @@ modal.innerHTML = `
     <img id="modalImage" src="" alt="Photo to print">
     <div class="print-modal-actions">
       <button class="btn-print" id="btnPrint">Print</button>
-      <button class="btn-close" id="btnClose">Close</button>
     </div>
   </div>
 `;
@@ -19,7 +18,6 @@ document.body.appendChild(modal);
 const modalImage = document.getElementById('modalImage');
 const modalClose = document.getElementById('modalClose');
 const btnPrint = document.getElementById('btnPrint');
-const btnClose = document.getElementById('btnClose');
 let currentPrintImage = '';
 
 // Close modal
@@ -28,7 +26,6 @@ function closeModal() {
 }
 
 modalClose.addEventListener('click', closeModal);
-btnClose.addEventListener('click', closeModal);
 
 // Close on background click
 modal.addEventListener('click', (e) => {

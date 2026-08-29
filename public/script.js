@@ -10,6 +10,8 @@ const countdownEl = document.getElementById('countdown');
 const settingsBtn = document.getElementById('settingsBtn');
 const settingsModal = document.getElementById('settingsModal');
 const closeSettingsBtn = document.getElementById('closeSettings');
+const cameraSection = document.querySelector('.camera-section');
+const sidebar = document.querySelector('.sidebar');
 
 // Filter elements
 const filterButtons = document.querySelectorAll('.filter-btn');
@@ -119,31 +121,218 @@ function showError(msg) {
   document.body.prepend(el);
 }
 
-// Load and display saved photos (limited to last 6)
-async function loadPhotos() {
+// Track currently selected photo index for printing
+let currentSelectedPhotoIndex = -1;
+let galleryPhotos = [];
+
+// Gallery mode state
+let isGalleryMode = false;
+
+// Load and display saved photos
+// In gallery mode, load ALL photos for printing
+// In photobooth mode, still show only last 6 in sidebar
+async function loadPhotos(loadAll = false) {
   try {
     const response = await fetch('/photos');
     let photos = await response.json();
     
-    // Show only the last 6 photos
-    photos = photos.slice(0, 6);
+    // Sort by filename (newest first, since filenames include timestamps)
+    photos.sort().reverse();
+    
+    // In gallery mode, show ALL photos; otherwise show last 6
+    if (!loadAll && !isGalleryMode) {
+      photos = photos.slice(0, 6);
+    }
+    
+    galleryPhotos = photos;
     
     photoGallery.innerHTML = '';
     if (photos.length === 0) {
       photoGallery.innerHTML = '<p style="color: #666; grid-column: 1/-1;">No photos yet. Take some!</p>';
+      currentSelectedPhotoIndex = -1;
       return;
     }
     
-    photos.forEach(photo => {
+    photos.forEach((photo, index) => {
       const img = document.createElement('img');
       img.src = `/${photo}`;
       img.alt = photo;
       img.title = photo;
+      img.dataset.index = index;
+      img.className = 'gallery-img';
+      img.addEventListener('click', () => selectPhoto(index));
       photoGallery.appendChild(img);
     });
+    
+    // Select the first photo by default
+    if (photos.length > 0) {
+      selectPhoto(0);
+    }
   } catch (err) {
     console.error('Failed to load photos:', err);
   }
+}
+
+// Select a photo in the gallery
+function selectPhoto(index) {
+  currentSelectedPhotoIndex = index;
+  
+  // Update UI to show selection
+  const images = photoGallery.querySelectorAll('.gallery-img');
+  images.forEach((img, i) => {
+    img.classList.toggle('selected', i === index);
+  });
+  
+  // Scroll the selected image into view
+  const selectedImg = photoGallery.querySelector(`[data-index="${index}"]`);
+  if (selectedImg) {
+    selectedImg.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+  }
+  
+  showStatus(`Selected photo ${index + 1} of ${galleryPhotos.length}`);
+  return index;
+}
+
+// Print preview modal state
+let printPreviewModal = null;
+let printPreviewImg = null;
+
+// Create print preview modal
+function createPrintPreviewModal() {
+  if (printPreviewModal) return;
+  
+  printPreviewModal = document.createElement('div');
+  printPreviewModal.id = 'printPreviewModal';
+  printPreviewModal.className = 'modal print-preview-modal';
+  printPreviewModal.innerHTML = `
+    <div class="modal-content print-preview-content">
+      <h2>Print Preview</h2>
+      <div class="print-preview-image-container">
+        <img id="printPreviewImg" src="" alt="Print Preview" />
+      </div>
+      <div class="print-preview-controls">
+        <button id="printConfirmBtn" class="btn-print">Print Photo</button>
+        <button id="downloadBtn" class="btn-download">Download Photo</button>
+      </div>
+      <p class="print-hint">Note: Print requires browser confirmation. Use Download for direct save.</p>
+    </div>
+  `;
+  document.body.appendChild(printPreviewModal);
+  
+  printPreviewImg = document.getElementById('printPreviewImg');
+  const printConfirmBtn = document.getElementById('printConfirmBtn');
+  const downloadBtn = document.getElementById('downloadBtn');
+  
+  printConfirmBtn.addEventListener('click', () => {
+    window.print();
+    closePrintPreview();
+  });
+  
+  downloadBtn.addEventListener('click', downloadSelectedPhoto);
+}
+
+// Download the selected photo directly
+function downloadSelectedPhoto() {
+  if (currentSelectedPhotoIndex < 0 || currentSelectedPhotoIndex >= galleryPhotos.length) {
+    showStatus('No photo selected', true);
+    playBeep(400, 0.1);
+    return;
+  }
+  
+  const photoName = galleryPhotos[currentSelectedPhotoIndex];
+  
+  // Create a temporary anchor to trigger download
+  const link = document.createElement('a');
+  link.href = `/${photoName}`;
+  link.download = photoName;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  
+  closePrintPreview();
+  showStatus(`Downloaded: ${photoName}`);
+  playBeep(1200, 0.05);
+}
+
+// Close print preview modal
+function closePrintPreview() {
+  if (printPreviewModal) {
+    printPreviewModal.classList.remove('active');
+  }
+  // Reset button state
+  buttonWasPressed = {};
+}
+
+// Show print preview for selected photo
+function showPrintPreview() {
+  if (currentSelectedPhotoIndex < 0 || currentSelectedPhotoIndex >= galleryPhotos.length) {
+    showStatus('No photo selected', true);
+    playBeep(400, 0.1);
+    return;
+  }
+  
+  const photoName = galleryPhotos[currentSelectedPhotoIndex];
+  
+  // Create modal if it doesn't exist
+  createPrintPreviewModal();
+  
+  // Set the image source
+  printPreviewImg.src = `/${photoName}`;
+  printPreviewImg.alt = photoName;
+  
+  // Show the modal
+  printPreviewModal.classList.add('active');
+  
+  // Reset button state tracking for clean input
+  buttonWasPressed = {};
+  
+  // Focus the print button for controller navigation
+  setTimeout(() => {
+    const printBtn = document.getElementById('printConfirmBtn');
+    if (printBtn) printBtn.focus();
+  }, 100);
+  
+  showStatus('Press Print or Download');
+  playBeep(1000, 0.05);
+}
+
+// Print the currently selected photo (legacy function, now shows preview)
+function printSelectedPhoto() {
+  showPrintPreview();
+}
+
+// Toggle between photobooth mode and gallery mode
+async function toggleGalleryMode() {
+  isGalleryMode = !isGalleryMode;
+  
+  if (isGalleryMode) {
+    // Switch to gallery mode
+    cameraSection.style.display = 'none';
+    sidebar.classList.add('fullscreen');
+    sidebar.style.display = 'block';
+    showStatus('Gallery mode - Loading all photos...');
+    
+    // Reload photos to show ALL images in gallery mode
+    await loadPhotos(true);
+    
+    if (galleryPhotos.length > 0) {
+      showStatus(`Gallery mode - Use joystick to navigate ${galleryPhotos.length} photos`);
+      selectPhoto(0);
+    } else {
+      showStatus('Gallery mode - No photos yet. Take some!');
+    }
+  } else {
+    // Switch back to photobooth mode
+    cameraSection.style.display = 'block';
+    sidebar.classList.remove('fullscreen');
+    sidebar.style.display = '';
+    showStatus('Photobooth mode - Use joystick to change filters');
+    
+    // Reload photos to show only last 6 in sidebar
+    await loadPhotos(false);
+  }
+  
+  playBeep(800, 0.05);
 }
 
 // Save photo to server
@@ -479,11 +668,378 @@ function setupKeyboardShortcuts() {
   });
 }
 
+// Gamepad support for arcade controller
+let currentGamepad = null;
+let gamepadButtons = {};
+let gamepadAxes = {};
+
+// Gamepad button mapping for photobooth
+const GAMEPAD_MAPPING = {
+  SINGLE_PHOTO: 0,    // Typically button 0 (A/South)
+  BURST_PHOTO: 1,    // Typically button 1 (B/East)
+  TOGGLE_MODE: 2,    // Typically button 2 (X/West) - Toggle gallery/photobooth
+  FILTER_NEXT: 2,    // Typically button 2 (X/West) - fallback
+  FILTER_PREV: 3,    // Typically button 3 (Y/North)
+  PRINT: 4,          // Typically button 4 (L1/Left Trigger)
+  SETTINGS: 9,       // Typically button 9 (Start)
+  BACK: 8           // Typically button 8 (Select/Back)
+};
+
+// Configurable button mapping (can be customized)
+let gamepadConfig = {
+  singlePhoto: GAMEPAD_MAPPING.SINGLE_PHOTO,
+  burstPhoto: GAMEPAD_MAPPING.BURST_PHOTO,
+  toggleMode: GAMEPAD_MAPPING.TOGGLE_MODE,
+  filterNext: GAMEPAD_MAPPING.FILTER_NEXT,
+  filterPrev: GAMEPAD_MAPPING.FILTER_PREV,
+  print: GAMEPAD_MAPPING.PRINT,
+  settings: GAMEPAD_MAPPING.SETTINGS,
+  back: GAMEPAD_MAPPING.BACK
+};
+
+// Button state tracking to handle press/release
+let buttonWasPressed = {};
+
+// Setup gamepad support
+function setupGamepad() {
+  // Listen for gamepad connection events
+  window.addEventListener('gamepadconnected', (e) => {
+    console.log('Gamepad connected:', e.gamepad.id);
+    currentGamepad = e.gamepad;
+    showStatus(`Controller connected: ${e.gamepad.id}`);
+    updateGamepadIndicator(true);
+  });
+
+  window.addEventListener('gamepaddisconnected', (e) => {
+    console.log('Gamepad disconnected:', e.gamepad.id);
+    currentGamepad = null;
+    showStatus('Controller disconnected', true);
+    buttonWasPressed = {};
+    updateGamepadIndicator(false);
+  });
+
+  // Main game loop for polling gamepad state
+  function gamepadLoop() {
+    const gamepads = navigator.getGamepads();
+    
+    // Find our gamepad (prefer DragonRise or any connected one)
+    for (const gp of gamepads) {
+      if (gp && (gp.id.includes('DragonRise') || gp.mapping === 'standard' || gamepadButtons[gp.index])) {
+        currentGamepad = gp;
+        gamepadButtons[gp.index] = true;
+        break;
+      }
+    }
+
+    // Process gamepad input if connected
+    if (currentGamepad) {
+      processGamepadInput(currentGamepad);
+    }
+
+    requestAnimationFrame(gamepadLoop);
+  }
+
+  // Start the gamepad polling loop
+  gamepadLoop();
+}
+
+// Process gamepad input
+function processGamepadInput(gamepad) {
+  // Process buttons
+  for (let i = 0; i < gamepad.buttons.length; i++) {
+    const button = gamepad.buttons[i];
+    const isPressed = button.pressed || button.value > 0.5;
+    
+    // Check if button state changed from not pressed to pressed
+    if (isPressed && !buttonWasPressed[i]) {
+      handleGamepadButtonDown(i);
+    }
+    
+    buttonWasPressed[i] = isPressed;
+  }
+
+  // Process axes (for D-pad or joystick navigation)
+  for (let i = 0; i < gamepad.axes.length; i++) {
+    gamepadAxes[i] = gamepad.axes[i];
+    handleGamepadAxis(i, gamepad.axes[i]);
+  }
+}
+
+// Handle gamepad button press
+function handleGamepadButtonDown(buttonIndex) {
+  console.log(`Gamepad button ${buttonIndex} pressed`);
+  
+  // If print preview is open, handle print/download/close
+  if (printPreviewModal && printPreviewModal.classList.contains('active')) {
+    if (buttonIndex === gamepadConfig.singlePhoto) {
+      // Button 0 (A) = Print (requires browser confirmation)
+      const printBtn = document.getElementById('printConfirmBtn');
+      if (printBtn) printBtn.click();
+      playBeep(1200, 0.05);
+    } else if (buttonIndex === gamepadConfig.burstPhoto) {
+      // Button 1 (B) = Download (direct, no confirmation)
+      const downloadBtn = document.getElementById('downloadBtn');
+      if (downloadBtn) downloadBtn.click();
+      playBeep(1000, 0.05);
+    } else if (buttonIndex === gamepadConfig.back) {
+      // Button 8 (Back/Select) = Close preview
+      closePrintPreview();
+      playBeep(800, 0.05);
+    }
+    return;
+  }
+  
+  // If in gallery mode, only allow print, back, and toggle
+  if (isGalleryMode) {
+    if (buttonIndex === gamepadConfig.print) {
+      printSelectedPhoto();
+    } else if (buttonIndex === gamepadConfig.toggleMode || buttonIndex === gamepadConfig.back) {
+      toggleGalleryMode();
+    }
+    return;
+  }
+  
+  // Single photo capture
+  if (buttonIndex === gamepadConfig.singlePhoto) {
+    if (!capture1Btn.disabled) {
+      capture1Btn.click();
+      playBeep(1000, 0.05);
+    }
+  }
+  
+  // Burst photo capture (3 photos)
+  else if (buttonIndex === gamepadConfig.burstPhoto) {
+    if (!capture3Btn.disabled) {
+      capture3Btn.click();
+      playBeep(800, 0.05);
+    }
+  }
+  
+  // Toggle gallery mode
+  else if (buttonIndex === gamepadConfig.toggleMode) {
+    toggleGalleryMode();
+  }
+  
+  // Cycle to next filter
+  else if (buttonIndex === gamepadConfig.filterNext) {
+    cycleFilter('next');
+    playBeep(600, 0.05);
+  }
+  
+  // Cycle to previous filter
+  else if (buttonIndex === gamepadConfig.filterPrev) {
+    cycleFilter('prev');
+    playBeep(600, 0.05);
+  }
+  
+  // Print selected photo
+  else if (buttonIndex === gamepadConfig.print) {
+    toggleGalleryMode(); // In photobooth mode, print button also toggles to gallery
+  }
+  
+  // Open settings
+  else if (buttonIndex === gamepadConfig.settings) {
+    settingsBtn.click();
+    playBeep(700, 0.05);
+  }
+  
+  // Close settings / go back
+  else if (buttonIndex === gamepadConfig.back) {
+    closeSettingsBtn.click();
+    playBeep(500, 0.05);
+  }
+  
+  // Log other buttons for debugging
+  else {
+    console.log(`Unhandled gamepad button: ${buttonIndex}`);
+  }
+}
+
+// Track axis deadzone to prevent drift
+const AXIS_DEADZONE = 0.3;
+
+// Track last axis values for threshold detection
+let lastAxisValues = {};
+
+// Handle gamepad axis movement
+function handleGamepadAxis(axisIndex, value) {
+  // Store current value for next frame
+  gamepadAxes[axisIndex] = value;
+  
+  // Apply deadzone to prevent drift
+  if (Math.abs(value) < AXIS_DEADZONE) {
+    value = 0;
+  }
+
+  const lastValue = lastAxisValues[axisIndex] || 0;
+
+  // Mode-specific axis handling
+  if (isGalleryMode) {
+    // In gallery mode: 
+    // Axis 0 (horizontal): navigate left/right through photos
+    // Axis 1 (vertical): scroll gallery container up/down
+    if (axisIndex === 0) {
+      // Horizontal: next/prev photo
+      if (value > 0.5 && lastValue <= 0.5) {
+        navigateGallery('next');
+        playBeep(500, 0.03);
+      } else if (value < -0.5 && lastValue >= -0.5) {
+        navigateGallery('prev');
+        playBeep(500, 0.03);
+      }
+    }
+    if (axisIndex === 1) {
+      // Vertical: navigate up/down through grid
+      if (value > 0.5 && lastValue <= 0.5) {
+        // Down: select photo below
+        navigateGallery('down');
+        playBeep(500, 0.03);
+      } else if (value < -0.5 && lastValue >= -0.5) {
+        // Up: select photo above
+        navigateGallery('up');
+        playBeep(500, 0.03);
+      }
+    }
+  } else {
+    // In photobooth mode: use axes for filter navigation
+    if (axisIndex === 0) {
+      // Horizontal: next/prev filter
+      if (value > 0.5 && lastValue <= 0.5) {
+        cycleFilter('next');
+        playBeep(600, 0.03);
+      } else if (value < -0.5 && lastValue >= -0.5) {
+        cycleFilter('prev');
+        playBeep(600, 0.03);
+      }
+    }
+    if (axisIndex === 1) {
+      // Vertical: could be used for something else, or also filter nav
+      if (value < -0.5 && lastValue >= -0.5) {
+        cycleFilter('next');
+        playBeep(600, 0.03);
+      } else if (value > 0.5 && lastValue <= 0.5) {
+        cycleFilter('prev');
+        playBeep(600, 0.03);
+      }
+    }
+  }
+  
+  // Store current value for next frame
+  lastAxisValues[axisIndex] = value;
+}
+
+// Navigate through the photo gallery
+function navigateGallery(direction) {
+  if (galleryPhotos.length === 0) {
+    showStatus('No photos in gallery', true);
+    return;
+  }
+  
+  let newIndex;
+  if (direction === 'next') {
+    newIndex = (currentSelectedPhotoIndex + 1) % galleryPhotos.length;
+  } else if (direction === 'prev') {
+    newIndex = (currentSelectedPhotoIndex - 1 + galleryPhotos.length) % galleryPhotos.length;
+  } else if (direction === 'up' || direction === 'down') {
+    // Calculate grid navigation
+    newIndex = navigateGalleryGrid(direction);
+  }
+  
+  if (newIndex !== undefined) {
+    selectPhoto(newIndex);
+  }
+}
+
+// Navigate gallery grid up/down based on current selection
+function navigateGalleryGrid(direction) {
+  if (galleryPhotos.length === 0) return undefined;
+  
+  // Get the grid container to calculate columns
+  const grid = photoGallery;
+  if (!grid) return undefined;
+  
+  // Get computed style to find number of columns
+  const gridStyle = window.getComputedStyle(grid);
+  const gridTemplateColumns = gridStyle.getPropertyValue('grid-template-columns');
+  
+  // Count the number of columns by splitting the template
+  const columns = gridTemplateColumns.split(' ').filter(col => col !== '0px').length;
+  
+  if (columns <= 0) {
+    // Fallback: if we can't determine columns, use simple next/prev
+    return direction === 'down' 
+      ? (currentSelectedPhotoIndex + 1) % galleryPhotos.length
+      : (currentSelectedPhotoIndex - 1 + galleryPhotos.length) % galleryPhotos.length;
+  }
+  
+  const row = Math.floor(currentSelectedPhotoIndex / columns);
+  const col = currentSelectedPhotoIndex % columns;
+  
+  if (direction === 'down') {
+    // Move to same column in next row
+    const newRow = row + 1;
+    const newIndex = newRow * columns + col;
+    if (newIndex < galleryPhotos.length) {
+      return newIndex;
+    }
+    // If we're at the end, wrap or stay
+    return currentSelectedPhotoIndex;
+  } else if (direction === 'up') {
+    // Move to same column in previous row
+    const newRow = row - 1;
+    if (newRow >= 0) {
+      const newIndex = newRow * columns + col;
+      return newIndex;
+    }
+    // If we're at the top, stay
+    return currentSelectedPhotoIndex;
+  }
+  
+  return undefined;
+}
+
+// Cycle through filters
+function cycleFilter(direction) {
+  const filters = ['none', 'vintage', 'polaroid', 'noir'];
+  const currentIndex = filters.indexOf(currentFilter);
+  
+  let newIndex;
+  if (direction === 'next') {
+    newIndex = (currentIndex + 1) % filters.length;
+  } else {
+    newIndex = (currentIndex - 1 + filters.length) % filters.length;
+  }
+  
+  applyFilter(filters[newIndex]);
+}
+
+// Function to set custom button mapping
+function setGamepadMapping(mapping) {
+  gamepadConfig = { ...gamepadConfig, ...mapping };
+}
+
+// Update the gamepad indicator in the UI
+function updateGamepadIndicator(connected) {
+  const indicator = document.getElementById('gamepadStatus');
+  if (indicator) {
+    if (connected) {
+      indicator.textContent = 'Controller';
+      indicator.className = 'gamepad-indicator connected';
+      indicator.title = 'Controller connected and ready';
+    } else {
+      indicator.textContent = '';
+      indicator.className = 'gamepad-indicator';
+      indicator.title = 'Connect a controller';
+    }
+  }
+}
+
 // Initialize
 async function init() {
   await populateCameraList();
   await loadPhotos();
   setupKeyboardShortcuts();
+  setupGamepad();
 }
 
 // Start when page loads

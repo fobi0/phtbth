@@ -332,16 +332,6 @@ body {
   box-shadow: 0 4px 12px rgba(78, 205, 196, 0.4);
 }
 
-.print-modal-actions .btn-close {
-  background: #f0f0f0;
-  color: #666;
-}
-
-.print-modal-actions .btn-close:hover {
-  background: #e0e0e0;
-  color: #333;
-}
-
 .print-modal-close {
   position: absolute;
   top: 15px;

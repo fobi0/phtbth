@@ -24,6 +24,11 @@ app.get('/slideshow', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'slideshow.html'));
 });
 
+// Serve controller test page
+app.get('/controller-test', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'controller-test.html'));
+});
+
 // Random photo endpoint - serves a random photo as raw image
 app.get('/random', (req, res) => {
   fs.readdir(photosDir, (err, files) => {

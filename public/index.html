@@ -20,6 +20,7 @@
         </svg>
       </button>
       <h1>Photobooth</h1>
+      <div id="gamepadStatus" class="gamepad-indicator" title="Controller ready"></div>
       
       <div id="settingsModal" class="modal">
         <div class="modal-content">
@@ -48,9 +49,6 @@
         <div class="frame frame-tr"></div>
         <div class="frame frame-bl"></div>
         <div class="frame frame-br"></div>
-        <div class="balloon balloon-1"></div>
-        <div class="balloon balloon-2"></div>
-        <div class="balloon balloon-3"></div>
         <video id="preview" autoplay playsinline muted></video>
         <div id="countdown" class="countdown"></div>
       </div>
@@ -79,7 +77,7 @@
       </div>
       
       <div class="status" id="status"></div>
-      <div class="keyboard-hint">Press <kbd>Space</kbd> for single • <kbd>B</kbd> for collage</div>
+      <div class="keyboard-hint">Press <kbd>Space</kbd> for single • <kbd>B</kbd> for collage • <kbd>X</kbd> to toggle gallery • Joystick changes filter/gallery nav</div>
     </main>
     
     <aside class="sidebar">
