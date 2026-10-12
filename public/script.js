@@ -224,8 +224,19 @@ function createPrintPreviewModal() {
   const downloadBtn = document.getElementById('downloadBtn');
   
   printConfirmBtn.addEventListener('click', () => {
-    window.print();
-    closePrintPreview();
+    // Add print class to trigger print CSS
+    document.body.classList.add('printing');
+    
+    // Print after a brief delay to allow CSS to apply
+    setTimeout(() => {
+      window.print();
+    }, 100);
+    
+    // Remove print class and close preview after printing
+    setTimeout(() => {
+      document.body.classList.remove('printing');
+      closePrintPreview();
+    }, 2000);
   });
   
   downloadBtn.addEventListener('click', downloadSelectedPhoto);
@@ -446,7 +457,9 @@ async function startCamera(deviceId = null) {
   await stopStream();
   
   const constraints = {
-    video: deviceId ? { deviceId } : { facingMode: 'user' },
+    video: deviceId 
+      ? { deviceId, width: { ideal: 1920 }, height: { ideal: 1080 } }
+      : { facingMode: 'user', width: { ideal: 1920 }, height: { ideal: 1080 } },
     audio: false
   };
   
@@ -568,8 +581,9 @@ capture1Btn.addEventListener('click', async () => {
   await new Promise(resolve => setTimeout(resolve, 50));
   
   const c = capture();
-  const framed = addPolaroidFrame(c);
-  const base64 = framed.toDataURL('image/jpeg', 0.9);
+  // const framed = addPolaroidFrame(c);
+  // const base64 = framed.toDataURL('image/jpeg', 0.9);
+  const base64 = c.toDataURL('image/jpeg', 0.9);
   await savePhoto(base64, 'single');
   
   capture1Btn.disabled = false;

@@ -1,89 +1,103 @@
 const photosGrid = document.getElementById('photosGrid');
 
-// Print modal elements
-const modal = document.createElement('div');
-modal.className = 'print-modal';
-modal.innerHTML = `
-  <div class="print-modal-content">
-    <button class="print-modal-close" id="modalClose">&times;</button>
-    <h2>Print Photo</h2>
-    <img id="modalImage" src="" alt="Photo to print">
-    <div class="print-modal-actions">
-      <button class="btn-print" id="btnPrint">Print</button>
+// Print modal elements - use same class names as script.js for consistency
+let printPreviewModal = null;
+let printPreviewImg = null;
+
+// Create print preview modal
+function createPrintPreviewModal() {
+  if (printPreviewModal) return;
+  
+  printPreviewModal = document.createElement('div');
+  printPreviewModal.id = 'printPreviewModal';
+  printPreviewModal.className = 'modal print-preview-modal';
+  printPreviewModal.innerHTML = `
+    <div class="modal-content print-preview-content">
+      <button class="print-modal-close" id="modalClose">&times;</button>
+      <h2>Print Preview</h2>
+      <div class="print-preview-image-container">
+        <img id="printPreviewImg" src="" alt="Print Preview" />
+      </div>
+      <div class="print-preview-controls">
+        <button id="printConfirmBtn" class="btn-print">Print Photo</button>
+        <button id="downloadBtn" class="btn-download">Download Photo</button>
+      </div>
+      <p class="print-hint">Note: Print requires browser confirmation. Use Download for direct save.</p>
     </div>
-  </div>
-`;
-document.body.appendChild(modal);
-
-const modalImage = document.getElementById('modalImage');
-const modalClose = document.getElementById('modalClose');
-const btnPrint = document.getElementById('btnPrint');
-let currentPrintImage = '';
-
-// Close modal
-function closeModal() {
-  modal.classList.remove('active');
+  `;
+  document.body.appendChild(printPreviewModal);
+  
+  printPreviewImg = document.getElementById('printPreviewImg');
+  const printConfirmBtn = document.getElementById('printConfirmBtn');
+  const downloadBtn = document.getElementById('downloadBtn');
+  const modalClose = document.getElementById('modalClose');
+  
+  // Close modal on X button click
+  if (modalClose) {
+    modalClose.addEventListener('click', closePrintPreview);
+  }
+  
+  // Setup background click handler
+  setupPrintPreviewHandlers();
+  
+  printConfirmBtn.addEventListener('click', () => {
+    document.body.classList.add('printing');
+    
+    setTimeout(() => {
+      window.print();
+    }, 100);
+    
+    setTimeout(() => {
+      document.body.classList.remove('printing');
+      closePrintPreview();
+    }, 2000);
+  });
+  
+  // Download function for gallery
+  downloadBtn.addEventListener('click', () => {
+    if (!printPreviewImg || !printPreviewImg.src) return;
+    const link = document.createElement('a');
+    link.href = printPreviewImg.src;
+    link.download = printPreviewImg.src.split('/').pop();
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    closePrintPreview();
+  });
 }
 
-modalClose.addEventListener('click', closeModal);
-
-// Close on background click
-modal.addEventListener('click', (e) => {
-  if (e.target === modal) {
-    closeModal();
+// Close print preview modal
+function closePrintPreview() {
+  if (printPreviewModal) {
+    printPreviewModal.classList.remove('active');
   }
-});
+}
 
 // Close on Escape key
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
-    closeModal();
+    closePrintPreview();
   }
 });
 
-// Print functionality
-btnPrint.addEventListener('click', () => {
-  if (currentPrintImage) {
-    const printWindow = window.open('', '_blank');
-    printWindow.document.write(`
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Print Photo</title>
-        <style>
-          body { 
-            display: flex; 
-            justify-content: center; 
-            align-items: center; 
-            min-height: 100vh; 
-            margin: 0; 
-            background: #f5f5f5; 
-          }
-          img { 
-            max-width: 100%; 
-            max-height: 100vh; 
-            box-shadow: 0 0 20px rgba(0,0,0,0.2); 
-          }
-          @media print {
-            body { background: white; }
-            img { max-width: 100%; max-height: 100%; }
-          }
-        </style>
-      </head>
-      <body>
-        <img src="${currentPrintImage}" onload="window.print();">
-      </body>
-      </html>
-    `);
-    printWindow.document.close();
+// Close on background click
+function setupPrintPreviewHandlers() {
+  if (printPreviewModal) {
+    printPreviewModal.addEventListener('click', (e) => {
+      if (e.target === printPreviewModal) {
+        closePrintPreview();
+      }
+    });
   }
-});
+}
 
 // Open modal with image
 function openPrintModal(imageSrc) {
-  currentPrintImage = imageSrc;
-  modalImage.src = imageSrc;
-  modal.classList.add('active');
+  createPrintPreviewModal();
+  if (printPreviewImg) {
+    printPreviewImg.src = imageSrc;
+    printPreviewModal.classList.add('active');
+  }
 }
 
 // Load and display all photos

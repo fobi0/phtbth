@@ -813,3 +813,181 @@ body::before {
   border-radius: 6px;
   border: 1px solid rgba(255,68,68,0.3);
 }
+
+
+
+/* Print mode - Canon Selphy CP1500 Hagaki (148mm x 100mm) */
+@page {
+  margin: 0;
+  size: 148mm 100mm;
+}
+
+/* For Firefox's native print dialog (Ctrl+P) */
+@media print {
+  html, body {
+    width: 148mm !important;
+    height: 100mm !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: white !important;
+  }
+  
+  /* Hide photobooth elements */
+  .fun-frame,
+  .app-container,
+  .camera-section,
+  .sidebar,
+  .top-header,
+  .controls,
+  .keyboard-hint,
+  .status,
+  .filter-controls,
+  .preview-wrapper {
+    display: none !important;
+  }
+  
+  /* Hide modal chrome but keep image */
+  .print-modal-close,
+  .print-preview-controls,
+  .print-hint,
+  .print-preview-content > :not(.print-preview-image-container) {
+    display: none !important;
+  }
+  
+  /* Show print preview chain */
+  .print-preview-modal,
+  .print-preview-content,
+  .print-preview-image-container,
+  .print-modal,
+  .print-modal-content,
+  .modal,
+  .modal-content {
+    visibility: visible !important;
+    display: block !important;
+    position: static !important;
+    width: 148mm !important;
+    height: 100mm !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: white !important;
+    border: none !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    page-break-inside: avoid !important;
+    page-break-after: avoid !important;
+    page-break-before: avoid !important;
+  }
+  
+  /* The image */
+  .print-preview-image-container img,
+  .print-modal-content img,
+  .modal-content img,
+  .modal-image {
+    visibility: visible !important;
+    display: block !important;
+    width: 148mm !important;
+    height: 100mm !important;
+    max-width: none !important;
+    max-height: none !important;
+    object-fit: cover !important;
+    object-position: center !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    border-radius: 0 !important;
+    position: relative !important;
+    left: 0 !important;
+    top: 0 !important;
+  }
+}
+
+/* For our custom print button (adds .printing class) */
+body.printing,
+html.printing {
+  width: 148mm !important;
+  height: 100mm !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  background: white !important;
+  overflow: hidden !important;
+  page-break-after: avoid !important;
+  page-break-before: avoid !important;
+}
+
+body.printing .fun-frame,
+body.printing .app-container,
+body.printing .camera-section,
+body.printing .sidebar,
+body.printing .top-header,
+body.printing .controls,
+body.printing .keyboard-hint,
+body.printing .status,
+body.printing .filter-controls,
+body.printing .preview-wrapper,
+body.printing .print-modal-close,
+body.printing .print-preview-controls,
+body.printing .print-hint,
+body.printing .print-preview-content > :not(.print-preview-image-container) {
+  display: none !important;
+}
+
+body.printing .print-preview-modal,
+body.printing .print-preview-content,
+body.printing .print-preview-image-container,
+body.printing .print-preview-image-container img,
+body.printing .print-modal,
+body.printing .print-modal-content,
+body.printing .print-modal-content img,
+body.printing .modal,
+body.printing .modal-content,
+body.printing .modal-content img {
+  display: block !important;
+}
+
+body.printing .print-preview-modal,
+body.printing .print-modal,
+body.printing .modal,
+body.printing .print-preview-content,
+body.printing .print-preview-image-container,
+body.printing .print-modal-content,
+body.printing .modal-content {
+  display: block !important;
+  position: static !important;
+  width: 148mm !important;
+  height: 100mm !important;
+  min-width: 148mm !important;
+  min-height: 100mm !important;
+  max-width: 148mm !important;
+  max-height: 100mm !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  background: white !important;
+  border: none !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+  flex: none !important;
+  align-items: normal !important;
+  justify-content: normal !important;
+}
+
+body.printing .print-preview-image-container img,
+body.printing .print-modal-content img,
+body.printing .modal-content img {
+  width: 148mm !important;
+  height: 100mm !important;
+  max-width: none !important;
+  max-height: none !important;
+  object-fit: cover !important;
+  object-position: center !important;
+  display: block !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  position: relative !important;
+  left: 0 !important;
+  top: 0 !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+}

@@ -353,3 +353,167 @@ body {
 .print-modal-close:hover {
   background: #f5f5f5;
 }
+
+/* Print mode - Canon Selphy CP1500 Hagaki (148mm x 100mm) */
+@page {
+  size: 148mm 100mm;
+  margin: 0;
+}
+
+/* For Firefox's native print dialog (Ctrl+P) and our button */
+@media print {
+  html, body {
+    width: 148mm !important;
+    height: 100mm !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: white !important;
+  }
+  
+  /* Hide gallery elements */
+  .fun-bg,
+  .gallery-container,
+  .gallery-header,
+  .photos-grid,
+  .photo-card,
+  .photo-overlay,
+  .gallery-img {
+    display: none !important;
+  }
+  
+  /* Hide modal chrome but keep image */
+  .print-modal-close,
+  .print-preview-controls,
+  .print-hint,
+  .print-preview-content > :not(.print-preview-image-container) {
+    display: none !important;
+  }
+  
+  /* Show print preview chain */
+  .print-preview-modal,
+  .print-preview-content,
+  .print-preview-image-container,
+  .print-modal,
+  .print-modal-content,
+  .modal,
+  .modal-content {
+    display: block !important;
+    visibility: visible !important;
+    position: static !important;
+    width: 148mm !important;
+    height: 100mm !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: white !important;
+    border: none !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    page-break-inside: avoid !important;
+    page-break-after: avoid !important;
+    page-break-before: avoid !important;
+  }
+  
+  /* The image itself - THE KEY ELEMENT */
+  #printPreviewImg,
+  .print-preview-image-container img,
+  .print-modal-content img,
+  .modal-content img {
+    visibility: visible !important;
+    display: block !important;
+    width: 148mm !important;
+    height: 100mm !important;
+    max-width: none !important;
+    max-height: none !important;
+    object-fit: cover !important;
+    object-position: center !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    border-radius: 0 !important;
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    z-index: 99999 !important;
+  }
+}
+
+/* Class-based print styling (for when printing via button click) */
+body.printing,
+html.printing {
+  width: 148mm !important;
+  height: 100mm !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  background: white !important;
+  overflow: hidden !important;
+}
+
+body.printing .fun-bg,
+body.printing .gallery-container,
+body.printing .gallery-header,
+body.printing .photos-grid,
+body.printing .photo-card,
+body.printing .photo-overlay,
+body.printing .gallery-img,
+body.printing .print-modal-close,
+body.printing .print-preview-controls,
+body.printing .print-hint,
+body.printing .print-preview-content > :not(.print-preview-image-container) {
+  display: none !important;
+}
+
+body.printing .print-preview-modal,
+body.printing .print-preview-content,
+body.printing .print-preview-image-container,
+body.printing .print-preview-image-container img,
+body.printing .print-modal,
+body.printing .print-modal-content,
+body.printing .print-modal-content img,
+body.printing .modal,
+body.printing .modal-content,
+body.printing .modal-content img {
+  display: block !important;
+}
+
+body.printing .print-preview-modal,
+body.printing .print-modal,
+body.printing .modal,
+body.printing .print-preview-content,
+body.printing .print-preview-image-container,
+body.printing .print-modal-content,
+body.printing .modal-content {
+  position: static !important;
+  width: 148mm !important;
+  height: 100mm !important;
+  min-width: 148mm !important;
+  min-height: 100mm !important;
+  max-width: 148mm !important;
+  max-height: 100mm !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  background: white !important;
+  border: none !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+}
+
+body.printing .print-preview-image-container img,
+body.printing .print-modal-content img,
+body.printing .modal-content img {
+  width: 148mm !important;
+  height: 100mm !important;
+  max-width: none !important;
+  max-height: none !important;
+  object-fit: cover !important;
+  object-position: center !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: none !important;
+  border-radius: 0 !important;
+  position: relative !important;
+  left: 0 !important;
+  top: 0 !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+
