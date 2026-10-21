@@ -1,104 +1,17 @@
 const photosGrid = document.getElementById('photosGrid');
 
-// Print modal elements - use same class names as script.js for consistency
-let printPreviewModal = null;
-let printPreviewImg = null;
-
-// Create print preview modal
-function createPrintPreviewModal() {
-  if (printPreviewModal) return;
-  
-  printPreviewModal = document.createElement('div');
-  printPreviewModal.id = 'printPreviewModal';
-  printPreviewModal.className = 'modal print-preview-modal';
-  printPreviewModal.innerHTML = `
-    <div class="modal-content print-preview-content">
-      <button class="print-modal-close" id="modalClose">&times;</button>
-      <h2>Print Preview</h2>
-      <div class="print-preview-image-container">
-        <img id="printPreviewImg" src="" alt="Print Preview" />
-      </div>
-      <div class="print-preview-controls">
-        <button id="printConfirmBtn" class="btn-print">Print Photo</button>
-        <button id="downloadBtn" class="btn-download">Download Photo</button>
-      </div>
-      <p class="print-hint">Note: Print requires browser confirmation. Use Download for direct save.</p>
-    </div>
-  `;
-  document.body.appendChild(printPreviewModal);
-  
-  printPreviewImg = document.getElementById('printPreviewImg');
-  const printConfirmBtn = document.getElementById('printConfirmBtn');
-  const downloadBtn = document.getElementById('downloadBtn');
-  const modalClose = document.getElementById('modalClose');
-  
-  // Close modal on X button click
-  if (modalClose) {
-    modalClose.addEventListener('click', closePrintPreview);
-  }
-  
-  // Setup background click handler
-  setupPrintPreviewHandlers();
-  
-  printConfirmBtn.addEventListener('click', () => {
-    document.body.classList.add('printing');
-    
-    setTimeout(() => {
-      window.print();
-    }, 100);
-    
-    setTimeout(() => {
-      document.body.classList.remove('printing');
-      closePrintPreview();
-    }, 2000);
-  });
-  
-  // Download function for gallery
-  downloadBtn.addEventListener('click', () => {
-    if (!printPreviewImg || !printPreviewImg.src) return;
-    const link = document.createElement('a');
-    link.href = printPreviewImg.src;
-    link.download = printPreviewImg.src.split('/').pop();
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    closePrintPreview();
-  });
+// Printing and the print preview live in print.js (shared with the photobooth)
+function openPrintModal(imageSrc) {
+  PhotoPrint.openPreview(imageSrc);
 }
 
-// Close print preview modal
-function closePrintPreview() {
-  if (printPreviewModal) {
-    printPreviewModal.classList.remove('active');
-  }
-}
-
-// Close on Escape key
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') {
-    closePrintPreview();
-  }
+  if (!PhotoPrint.isOpen()) return;
+  if (e.key === 'Escape') PhotoPrint.action('close');
+  if (e.key === 'Enter' || e.key === 'p') PhotoPrint.action('print');
 });
 
-// Close on background click
-function setupPrintPreviewHandlers() {
-  if (printPreviewModal) {
-    printPreviewModal.addEventListener('click', (e) => {
-      if (e.target === printPreviewModal) {
-        closePrintPreview();
-      }
-    });
-  }
-}
-
-// Open modal with image
-function openPrintModal(imageSrc) {
-  createPrintPreviewModal();
-  if (printPreviewImg) {
-    printPreviewImg.src = imageSrc;
-    printPreviewModal.classList.add('active');
-  }
-}
+let shownPhotos = '';
 
 // Load and display all photos
 async function loadAllPhotos() {
@@ -108,7 +21,12 @@ async function loadAllPhotos() {
     
     // Sort newest first
     photos.sort().reverse();
-    
+
+    // The page refreshes every 10s; only rebuild when something changed
+    const key = photos.join('|');
+    if (key === shownPhotos) return;
+    shownPhotos = key;
+
     if (photos.length === 0) {
       photosGrid.innerHTML = '<div class="empty-message">No photos yet. Go take some fun pictures!</div>';
       return;

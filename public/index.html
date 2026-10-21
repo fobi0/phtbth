@@ -3,88 +3,133 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Local Photobooth</title>
+  <title>Photobooth</title>
   <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="print.css">
   <link href="https://fonts.googleapis.com/css2?family=Pacifico&display=swap" rel="stylesheet">
 </head>
-<body>
-  <div class="fun-frame"></div>
+<body class="booth">
   <div id="flash" class="flash"></div>
-  
-  <div class="app-container">
-    <header class="top-header">
-      <button id="settingsBtn" class="btn-settings" title="Settings">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="12" r="3"/>
-          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V7a1.65 1.65 0 0 0 1.51 1H21a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1-2.83 0l-.06.06A1.65 1.65 0 0 0 19.4 9z"/>
-        </svg>
-      </button>
-      <h1>Photobooth</h1>
-      <div id="gamepadStatus" class="gamepad-indicator" title="Controller ready"></div>
-      
-      <div id="settingsModal" class="modal">
-        <div class="modal-content">
-          <h3>Settings</h3>
-          <div class="modal-section">
-            <label>Camera:</label>
-            <div class="camera-selector">
-              <select id="cameraList"></select>
-              <button id="refreshCameras" class="btn-refresh" title="Refresh camera list">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M23 4v6h-6"/>
-                  <path d="M1 20v-6h6"/>
-                  <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
-                </svg>
-              </button>
-            </div>
-          </div>
-          <button id="closeSettings" class="modal-close">Close</button>
-        </div>
-      </div>
-    </header>
-    
-    <main class="camera-section">
+
+  <header class="top-header">
+    <button id="settingsBtn" class="btn-icon" title="Settings" aria-label="Settings">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="3"/>
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+      </svg>
+    </button>
+    <h1>Photobooth</h1>
+    <div id="gamepadStatus" class="gamepad-indicator" title="No controller detected - press any controller button">Controller</div>
+  </header>
+
+  <main class="booth-main">
+    <section class="stage">
       <div class="preview-wrapper">
         <div class="frame frame-tl"></div>
         <div class="frame frame-tr"></div>
         <div class="frame frame-bl"></div>
         <div class="frame frame-br"></div>
         <video id="preview" autoplay playsinline muted></video>
+
+        <div class="filter-controls">
+          <button class="filter-btn active" data-filter="none">Normal</button>
+          <button class="filter-btn" data-filter="vintage">Vintage</button>
+          <button class="filter-btn" data-filter="polaroid">Polaroid</button>
+          <button class="filter-btn" data-filter="noir">Noir</button>
+        </div>
+
         <div id="countdown" class="countdown"></div>
+        <div id="status" class="status" role="status" aria-live="polite"></div>
       </div>
-      
-      <div class="filter-controls">
-        <button id="filter-none" class="filter-btn active" data-filter="none" title="No filter">Normal</button>
-        <button id="filter-vintage" class="filter-btn" data-filter="vintage" title="Vintage warm">Vintage</button>
-        <button id="filter-polaroid" class="filter-btn" data-filter="polaroid" title="Classic Polaroid">Polaroid</button>
-        <button id="filter-noir" class="filter-btn" data-filter="noir" title="Black & white">Noir</button>
-      </div>
-      
+
       <div class="controls">
         <button id="capture1" class="btn btn-single" title="Take single photo">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
             <circle cx="12" cy="13" r="4"/>
           </svg>
+          <span>Photo</span>
         </button>
         <button id="capture3" class="btn btn-burst" title="Take series (3 stacked)">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="6" y="4" width="12" height="4" rx="1"/>
-            <rect x="6" y="10" width="12" height="4" rx="1"/>
-            <rect x="6" y="16" width="12" height="4" rx="1"/>
+            <rect x="6" y="3" width="12" height="5" rx="1"/>
+            <rect x="6" y="10" width="12" height="5" rx="1"/>
+            <rect x="6" y="17" width="12" height="5" rx="1"/>
           </svg>
+          <span>Series</span>
+        </button>
+        <button id="openGallery" class="btn btn-gallery" title="Gallery">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="7" height="7" rx="1"/>
+            <rect x="14" y="3" width="7" height="7" rx="1"/>
+            <rect x="3" y="14" width="7" height="7" rx="1"/>
+            <rect x="14" y="14" width="7" height="7" rx="1"/>
+          </svg>
+          <span>Gallery</span>
         </button>
       </div>
-      
-      <div class="status" id="status"></div>
-      <div class="keyboard-hint">Press <kbd>Space</kbd> for single • <kbd>B</kbd> for collage • <kbd>X</kbd> to toggle gallery • Joystick changes filter/gallery nav</div>
-    </main>
-    
-    <aside class="sidebar">
-      <h2>Your Photos</h2>
-      <div id="photoGallery" class="photo-grid"></div>
+    </section>
+
+    <aside class="recent">
+      <h2>Latest</h2>
+      <div id="recentPhotos" class="recent-list"></div>
     </aside>
+  </main>
+
+  <footer id="hintBar" class="hint-bar"></footer>
+
+  <!-- Gallery mode: full screen, all photos -->
+  <section id="galleryView" class="gallery-view" hidden>
+    <header class="gallery-view-header">
+      <h2>All photos <span id="galleryCount"></span></h2>
+    </header>
+    <div id="galleryGrid" class="gallery-grid"></div>
+    <footer id="galleryHintBar" class="hint-bar"></footer>
+  </section>
+
+  <!-- Settings -->
+  <div id="settingsModal" class="modal">
+    <div class="modal-content">
+      <h3>Settings</h3>
+
+      <div class="modal-section">
+        <label for="cameraList">Camera</label>
+        <div class="camera-selector">
+          <select id="cameraList"></select>
+          <button id="refreshCameras" class="btn-refresh" title="Refresh camera list" aria-label="Refresh camera list">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M23 4v6h-6"/>
+              <path d="M1 20v-6h6"/>
+              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+            </svg>
+          </button>
+        </div>
+        <p id="cameraInfo" class="setting-note"></p>
+      </div>
+
+      <div class="modal-section">
+        <label for="printMethod">Printing</label>
+        <select id="printMethod">
+          <option value="server">Direct to printer (CUPS on this laptop)</option>
+          <option value="browser">Browser print (needs Chrome --kiosk-printing)</option>
+        </select>
+        <p id="printerInfo" class="setting-note"></p>
+      </div>
+
+      <div class="modal-section">
+        <div class="section-head">
+          <label>Controls</label>
+          <button id="resetBindings" class="btn-small">Reset to defaults</button>
+        </div>
+        <p class="setting-note">Click <b>+</b> and press a key or controller button to add it. Click a binding to remove it.</p>
+        <div id="bindingsTable" class="bindings-table"></div>
+      </div>
+
+      <button id="closeSettings" class="modal-close">Close</button>
+    </div>
   </div>
+
+  <script src="print.js"></script>
   <script src="script.js"></script>
 </body>
 </html>

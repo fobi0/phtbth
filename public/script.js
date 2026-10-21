@@ -1,353 +1,329 @@
+// ===========================================================================
+// Elements
+// ===========================================================================
 const preview = document.getElementById('preview');
 const capture1Btn = document.getElementById('capture1');
 const capture3Btn = document.getElementById('capture3');
+const openGalleryBtn = document.getElementById('openGallery');
 const cameraList = document.getElementById('cameraList');
+const cameraInfo = document.getElementById('cameraInfo');
 const statusEl = document.getElementById('status');
-const photoGallery = document.getElementById('photoGallery');
+const recentPhotosEl = document.getElementById('recentPhotos');
 const flashEl = document.getElementById('flash');
 const refreshCamerasBtn = document.getElementById('refreshCameras');
 const countdownEl = document.getElementById('countdown');
 const settingsBtn = document.getElementById('settingsBtn');
 const settingsModal = document.getElementById('settingsModal');
 const closeSettingsBtn = document.getElementById('closeSettings');
-const cameraSection = document.querySelector('.camera-section');
-const sidebar = document.querySelector('.sidebar');
-
-// Filter elements
+const printMethodSelect = document.getElementById('printMethod');
+const printerInfo = document.getElementById('printerInfo');
+const bindingsTable = document.getElementById('bindingsTable');
+const resetBindingsBtn = document.getElementById('resetBindings');
+const hintBar = document.getElementById('hintBar');
+const galleryView = document.getElementById('galleryView');
+const galleryGrid = document.getElementById('galleryGrid');
+const galleryCount = document.getElementById('galleryCount');
+const galleryHintBar = document.getElementById('galleryHintBar');
+const gamepadStatusEl = document.getElementById('gamepadStatus');
 const filterButtons = document.querySelectorAll('.filter-btn');
 
-// Series layout: only stacked (3 photos one on top of another)
-const seriesLayout = { rows: 3, cols: 1 };
-const seriesCount = seriesLayout.rows * seriesLayout.cols;
+const RECENT_COUNT = 6;
+const SERIES_COUNT = 3;
+// The series collage is composed at the paper's aspect ratio (100 x 148 mm,
+// portrait) so it prints edge to edge without cropping.
+const SERIES_ASPECT = 148 / 100;
 
-let currentCollageLayout = '1x3';
-let currentCollageCount = 3;
-
-let stream = null;
-let currentDeviceId = null;
-let currentFilter = 'none';
-let canvas = document.createElement('canvas');
-let ctx = canvas.getContext('2d');
-
-// Audio context for sounds
-let audioContext;
-
-// Initialize audio
-function initAudio() {
-  if (!audioContext) {
-    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+// ===========================================================================
+// Local settings (per kiosk browser)
+// ===========================================================================
+function loadSetting(key, fallback) {
+  try {
+    const raw = localStorage.getItem(`photobooth.${key}`);
+    return raw === null ? fallback : JSON.parse(raw);
+  } catch (e) {
+    return fallback;
   }
 }
 
-// Play a beep sound
-function playBeep(frequency = 800, duration = 0.1) {
-  if (!audioContext) initAudio();
-  
-  const oscillator = audioContext.createOscillator();
-  const gainNode = audioContext.createGain();
-  
-  oscillator.connect(gainNode);
-  gainNode.connect(audioContext.destination);
-  
-  oscillator.frequency.value = frequency;
-  oscillator.type = 'sine';
-  
-  gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
-  gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + duration);
-  
-  oscillator.start(audioContext.currentTime);
-  oscillator.stop(audioContext.currentTime + duration);
+function saveSetting(key, value) {
+  try {
+    localStorage.setItem(`photobooth.${key}`, JSON.stringify(value));
+  } catch (e) {
+    // Storage unavailable - setting only lasts for this page load
+  }
 }
 
-// Play shutter sound (two quick beeps)
+// ===========================================================================
+// Sounds
+// ===========================================================================
+let audioContext;
+
+function playBeep(frequency = 800, duration = 0.1) {
+  try {
+    if (!audioContext) {
+      audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (audioContext.state === 'suspended') {
+      audioContext.resume();
+    }
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+    oscillator.frequency.value = frequency;
+    oscillator.type = 'sine';
+    gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + duration);
+    oscillator.start(audioContext.currentTime);
+    oscillator.stop(audioContext.currentTime + duration);
+  } catch (e) {
+    // No audio available - sounds are optional
+  }
+}
+
 function playShutter() {
   playBeep(1000, 0.05);
   setTimeout(() => playBeep(800, 0.1), 50);
 }
 
-// Play countdown beep
-function playCountdownBeep() {
-  playBeep(600, 0.08);
+const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+// ===========================================================================
+// Status, flash, countdown
+// ===========================================================================
+let statusTimer = null;
+
+function showStatus(msg, isError = false) {
+  clearTimeout(statusTimer);
+  statusEl.textContent = msg;
+  statusEl.classList.toggle('error', isError);
+  statusEl.classList.add('visible');
+  statusTimer = setTimeout(() => statusEl.classList.remove('visible'), isError ? 6000 : 2500);
 }
 
-// Trigger flash animation with shutter sound
-function triggerFlash() {
+async function triggerFlash() {
   flashEl.classList.add('active');
   playShutter();
-  return new Promise(resolve => {
-    setTimeout(() => {
-      flashEl.classList.remove('active');
-      resolve();
-    }, 150);
-  });
+  await wait(150);
+  flashEl.classList.remove('active');
 }
 
-// Show countdown animation with sounds
-function showCountdown() {
+async function showCountdown() {
   countdownEl.classList.add('active');
-  countdownEl.textContent = '3';
-  playCountdownBeep();
-  
-  return new Promise(resolve => {
-    setTimeout(() => {
-      countdownEl.textContent = '2';
-      playCountdownBeep();
-      setTimeout(() => {
-        countdownEl.textContent = '1';
-        playCountdownBeep();
-        setTimeout(() => {
-          countdownEl.textContent = '';
-          countdownEl.classList.remove('active');
-          resolve();
-        }, 1000);
-      }, 1000);
-    }, 1000);
-  });
+  for (const n of ['3', '2', '1']) {
+    countdownEl.textContent = n;
+    // Restart the pulse animation for every number
+    countdownEl.style.animation = 'none';
+    void countdownEl.offsetWidth;
+    countdownEl.style.animation = '';
+    playBeep(600, 0.08);
+    await wait(1000);
+  }
+  countdownEl.textContent = '';
+  countdownEl.classList.remove('active');
 }
 
-// Show status message
-function showStatus(msg, isError = false) {
-  statusEl.textContent = msg;
-  statusEl.style.color = isError ? '#ff4444' : '#feca57';
-  if (!isError) {
-    setTimeout(() => statusEl.textContent = '', 3000);
+// ===========================================================================
+// Camera
+// ===========================================================================
+let stream = null;
+let currentDeviceId = null;
+let cameraRestartTimer = null;
+
+function streamIsLive() {
+  return !!stream && stream.getVideoTracks().some(t => t.readyState === 'live');
+}
+
+function stopStream() {
+  if (stream) {
+    stream.getTracks().forEach(track => track.stop());
+    stream = null;
   }
 }
 
-function showError(msg) {
-  const el = document.createElement('div');
-  el.className = 'error';
-  el.textContent = msg;
-  document.body.prepend(el);
+async function startCamera(deviceId = null) {
+  stopStream();
+
+  const video = {
+    width: { ideal: 1920 },
+    height: { ideal: 1080 },
+    frameRate: { ideal: 30 }
+  };
+  if (deviceId) {
+    video.deviceId = { exact: deviceId };
+  }
+
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ video, audio: false });
+  } catch (err) {
+    if (deviceId && (err.name === 'OverconstrainedError' || err.name === 'NotFoundError')) {
+      // Saved camera is gone - use whatever is available
+      return startCamera(null);
+    }
+    console.error('Camera error:', err);
+    showStatus(err.name === 'NotAllowedError'
+      ? 'Camera access denied - please allow camera access'
+      : `Camera error: ${err.message}`, true);
+    return false;
+  }
+
+  preview.srcObject = stream;
+  const track = stream.getVideoTracks()[0];
+  const settings = track.getSettings();
+  currentDeviceId = settings.deviceId || deviceId;
+  cameraInfo.textContent = `${track.label || 'Camera'}: ${settings.width}x${settings.height} @ ${Math.round(settings.frameRate || 0)} fps`;
+  console.log('Camera started:', cameraInfo.textContent);
+
+  // A USB camera that drops out (loose cable, power saving) ends the track.
+  // Note: 'ended' does not fire for our own track.stop() calls.
+  track.addEventListener('ended', () => {
+    console.warn('Camera track ended');
+    showStatus('Camera lost - reconnecting...', true);
+    scheduleCameraRecovery();
+  });
+  return true;
 }
 
-// Track currently selected photo index for printing
-let currentSelectedPhotoIndex = -1;
-let galleryPhotos = [];
+// Fill the dropdown; returns the list of video devices
+async function refreshCameraList() {
+  const devices = await navigator.mediaDevices.enumerateDevices();
+  const videoDevices = devices.filter(d => d.kind === 'videoinput');
 
-// Gallery mode state
-let isGalleryMode = false;
+  cameraList.innerHTML = '';
+  videoDevices.forEach((device, index) => {
+    const option = document.createElement('option');
+    option.value = device.deviceId;
+    option.text = device.label || `Camera ${index + 1}`;
+    option.selected = device.deviceId === currentDeviceId;
+    cameraList.appendChild(option);
+  });
+  return videoDevices;
+}
 
-// Load and display saved photos
-// In gallery mode, load ALL photos for printing
-// In photobooth mode, still show only last 6 in sidebar
-async function loadPhotos(loadAll = false) {
-  try {
-    const response = await fetch('/photos');
-    let photos = await response.json();
-    
-    // Sort by filename (newest first, since filenames include timestamps)
-    photos.sort().reverse();
-    
-    // In gallery mode, show ALL photos; otherwise show last 6
-    if (!loadAll && !isGalleryMode) {
-      photos = photos.slice(0, 6);
-    }
-    
-    galleryPhotos = photos;
-    
-    photoGallery.innerHTML = '';
-    if (photos.length === 0) {
-      photoGallery.innerHTML = '<p style="color: #666; grid-column: 1/-1;">No photos yet. Take some!</p>';
-      currentSelectedPhotoIndex = -1;
+// Make sure a live stream is running, preferring the camera chosen in settings
+async function ensureCamera() {
+  const devices = await refreshCameraList();
+  const preferred = loadSetting('cameraId', null);
+  const preferredPresent = devices.some(d => d.deviceId === preferred);
+  const currentPresent = devices.some(d => d.deviceId === currentDeviceId);
+
+  if (!streamIsLive() || !currentPresent || (preferredPresent && currentDeviceId !== preferred)) {
+    if (devices.length === 0) {
+      stopStream();
+      showStatus('No camera found - plug in a camera', true);
       return;
     }
-    
-    photos.forEach((photo, index) => {
-      const img = document.createElement('img');
-      img.src = `/${photo}`;
-      img.alt = photo;
-      img.title = photo;
-      img.dataset.index = index;
-      img.className = 'gallery-img';
-      img.addEventListener('click', () => selectPhoto(index));
-      photoGallery.appendChild(img);
-    });
-    
-    // Select the first photo by default
-    if (photos.length > 0) {
-      selectPhoto(0);
+    await startCamera(preferredPresent ? preferred : null);
+    await refreshCameraList();
+  }
+}
+
+function scheduleCameraRecovery(delay = 1500) {
+  clearTimeout(cameraRestartTimer);
+  cameraRestartTimer = setTimeout(async () => {
+    await ensureCamera();
+    if (!streamIsLive()) {
+      scheduleCameraRecovery(5000); // keep trying until the camera is back
     }
-  } catch (err) {
-    console.error('Failed to load photos:', err);
-  }
+  }, delay);
 }
 
-// Select a photo in the gallery
-function selectPhoto(index) {
-  currentSelectedPhotoIndex = index;
-  
-  // Update UI to show selection
-  const images = photoGallery.querySelectorAll('.gallery-img');
-  images.forEach((img, i) => {
-    img.classList.toggle('selected', i === index);
-  });
-  
-  // Scroll the selected image into view
-  const selectedImg = photoGallery.querySelector(`[data-index="${index}"]`);
-  if (selectedImg) {
-    selectedImg.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
-  }
-  
-  showStatus(`Selected photo ${index + 1} of ${galleryPhotos.length}`);
-  return index;
-}
-
-// Print preview modal state
-let printPreviewModal = null;
-let printPreviewImg = null;
-
-// Create print preview modal
-function createPrintPreviewModal() {
-  if (printPreviewModal) return;
-  
-  printPreviewModal = document.createElement('div');
-  printPreviewModal.id = 'printPreviewModal';
-  printPreviewModal.className = 'modal print-preview-modal';
-  printPreviewModal.innerHTML = `
-    <div class="modal-content print-preview-content">
-      <h2>Print Preview</h2>
-      <div class="print-preview-image-container">
-        <img id="printPreviewImg" src="" alt="Print Preview" />
-      </div>
-      <div class="print-preview-controls">
-        <button id="printConfirmBtn" class="btn-print">Print Photo</button>
-        <button id="downloadBtn" class="btn-download">Download Photo</button>
-      </div>
-      <p class="print-hint">Note: Print requires browser confirmation. Use Download for direct save.</p>
-    </div>
-  `;
-  document.body.appendChild(printPreviewModal);
-  
-  printPreviewImg = document.getElementById('printPreviewImg');
-  const printConfirmBtn = document.getElementById('printConfirmBtn');
-  const downloadBtn = document.getElementById('downloadBtn');
-  
-  printConfirmBtn.addEventListener('click', () => {
-    // Add print class to trigger print CSS
-    document.body.classList.add('printing');
-    
-    // Print after a brief delay to allow CSS to apply
-    setTimeout(() => {
-      window.print();
-    }, 100);
-    
-    // Remove print class and close preview after printing
-    setTimeout(() => {
-      document.body.classList.remove('printing');
-      closePrintPreview();
-    }, 2000);
-  });
-  
-  downloadBtn.addEventListener('click', downloadSelectedPhoto);
-}
-
-// Download the selected photo directly
-function downloadSelectedPhoto() {
-  if (currentSelectedPhotoIndex < 0 || currentSelectedPhotoIndex >= galleryPhotos.length) {
-    showStatus('No photo selected', true);
-    playBeep(400, 0.1);
+async function initCamera() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    showStatus('Camera API not available - open via http://localhost', true);
     return;
   }
-  
-  const photoName = galleryPhotos[currentSelectedPhotoIndex];
-  
-  // Create a temporary anchor to trigger download
-  const link = document.createElement('a');
-  link.href = `/${photoName}`;
-  link.download = photoName;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  
-  closePrintPreview();
-  showStatus(`Downloaded: ${photoName}`);
-  playBeep(1200, 0.05);
+  // Start first: device labels/ids are only available after permission is granted
+  await startCamera(loadSetting('cameraId', null));
+  await refreshCameraList();
+
+  // React to cameras being plugged in or out
+  navigator.mediaDevices.addEventListener('devicechange', () => {
+    console.log('Media devices changed');
+    scheduleCameraRecovery(800);
+  });
 }
 
-// Close print preview modal
-function closePrintPreview() {
-  if (printPreviewModal) {
-    printPreviewModal.classList.remove('active');
+cameraList.addEventListener('change', async () => {
+  const deviceId = cameraList.value;
+  if (deviceId) {
+    saveSetting('cameraId', deviceId);
+    await startCamera(deviceId);
   }
-  // Reset button state
-  buttonWasPressed = {};
+});
+
+refreshCamerasBtn.addEventListener('click', async () => {
+  showStatus('Refreshing cameras...');
+  await ensureCamera();
+});
+
+// ===========================================================================
+// Filters
+// ===========================================================================
+const FILTERS = ['none', 'vintage', 'polaroid', 'noir'];
+const FILTER_NAMES = { none: 'Normal', vintage: 'Vintage', polaroid: 'Polaroid', noir: 'Noir' };
+const filterPresets = {
+  none: 'none',
+  vintage: 'sepia(0.8) saturate(1.2) brightness(0.9) contrast(1.1)',
+  polaroid: 'brightness(1.2) contrast(0.95) sepia(0.3) saturate(0.9) hue-rotate(-3deg)',
+  noir: 'grayscale(1) contrast(1.3) brightness(1.1)'
+};
+let currentFilter = 'none';
+
+function applyFilter(filterName) {
+  currentFilter = filterName;
+  preview.style.filter = filterPresets[filterName];
+  filterButtons.forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.filter === filterName);
+  });
 }
 
-// Show print preview for selected photo
-function showPrintPreview() {
-  if (currentSelectedPhotoIndex < 0 || currentSelectedPhotoIndex >= galleryPhotos.length) {
-    showStatus('No photo selected', true);
-    playBeep(400, 0.1);
-    return;
+function cycleFilter(step) {
+  const index = FILTERS.indexOf(currentFilter);
+  applyFilter(FILTERS[(index + step + FILTERS.length) % FILTERS.length]);
+  playBeep(600, 0.03);
+}
+
+filterButtons.forEach(btn => {
+  btn.addEventListener('click', () => applyFilter(btn.dataset.filter));
+});
+
+// ===========================================================================
+// Capture
+// ===========================================================================
+let isCapturing = false;
+
+// Saved photos are mirrored like the preview (what guests saw is what they get).
+// Set to false to save the true, un-mirrored camera image instead.
+const MIRROR_PHOTOS = true;
+
+// Grab the current frame with the active filter. Returns a new canvas.
+function captureFrame() {
+  const width = preview.videoWidth;
+  const height = preview.videoHeight;
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  ctx.filter = filterPresets[currentFilter];
+  if (MIRROR_PHOTOS) {
+    // The preview's mirroring is only CSS; drawImage gets the raw frame
+    ctx.translate(width, 0);
+    ctx.scale(-1, 1);
   }
-  
-  const photoName = galleryPhotos[currentSelectedPhotoIndex];
-  
-  // Create modal if it doesn't exist
-  createPrintPreviewModal();
-  
-  // Set the image source
-  printPreviewImg.src = `/${photoName}`;
-  printPreviewImg.alt = photoName;
-  
-  // Show the modal
-  printPreviewModal.classList.add('active');
-  
-  // Reset button state tracking for clean input
-  buttonWasPressed = {};
-  
-  // Focus the print button for controller navigation
-  setTimeout(() => {
-    const printBtn = document.getElementById('printConfirmBtn');
-    if (printBtn) printBtn.focus();
-  }, 100);
-  
-  showStatus('Press Print or Download');
-  playBeep(1000, 0.05);
+  ctx.drawImage(preview, 0, 0, width, height);
+  return canvas;
 }
 
-// Print the currently selected photo (legacy function, now shows preview)
-function printSelectedPhoto() {
-  showPrintPreview();
+// Draw `source` into the target rect, cropping it centered to fill the rect
+function drawCover(ctx, source, dx, dy, dw, dh) {
+  const scale = Math.max(dw / source.width, dh / source.height);
+  const sw = dw / scale;
+  const sh = dh / scale;
+  ctx.drawImage(source, (source.width - sw) / 2, (source.height - sh) / 2, sw, sh, dx, dy, dw, dh);
 }
 
-// Toggle between photobooth mode and gallery mode
-async function toggleGalleryMode() {
-  isGalleryMode = !isGalleryMode;
-  
-  if (isGalleryMode) {
-    // Switch to gallery mode
-    cameraSection.style.display = 'none';
-    sidebar.classList.add('fullscreen');
-    sidebar.style.display = 'block';
-    showStatus('Gallery mode - Loading all photos...');
-    
-    // Reload photos to show ALL images in gallery mode
-    await loadPhotos(true);
-    
-    if (galleryPhotos.length > 0) {
-      showStatus(`Gallery mode - Use joystick to navigate ${galleryPhotos.length} photos`);
-      selectPhoto(0);
-    } else {
-      showStatus('Gallery mode - No photos yet. Take some!');
-    }
-  } else {
-    // Switch back to photobooth mode
-    cameraSection.style.display = 'block';
-    sidebar.classList.remove('fullscreen');
-    sidebar.style.display = '';
-    showStatus('Photobooth mode - Use joystick to change filters');
-    
-    // Reload photos to show only last 6 in sidebar
-    await loadPhotos(false);
-  }
-  
-  playBeep(800, 0.05);
-}
-
-// Save photo to server
-async function savePhoto(base64Image, prefix = 'photo', skipReload = false) {
+async function savePhoto(base64Image, prefix) {
   try {
     const response = await fetch('/save', {
       method: 'POST',
@@ -355,706 +331,674 @@ async function savePhoto(base64Image, prefix = 'photo', skipReload = false) {
       body: JSON.stringify({ image: base64Image, prefix })
     });
     const result = await response.json();
-    if (result.success) {
-      showStatus('Photo saved!');
-      if (!skipReload) {
-        loadPhotos();
-      }
-    } else {
-      showStatus('Failed to save photo', true);
+    if (!response.ok || !result.success) {
+      throw new Error(result.error || `HTTP ${response.status}`);
     }
+    return result.filename;
   } catch (err) {
-    showStatus('Error saving photo', true);
     console.error('Save error:', err);
+    showStatus(`Could not save photo: ${err.message}`, true);
+    return null;
   }
 }
 
-// Filter CSS strings
-const filterPresets = {
-  none: '',
-  vintage: 'sepia(0.8) saturate(1.2) brightness(0.9) contrast(1.1)',
-  polaroid: 'brightness(1.2) contrast(0.95) sepia(0.3) saturate(0.9) hue-rotate(-3deg)',
-  noir: 'grayscale(1) contrast(1.3) brightness(1.1)'
+function setCapturing(active) {
+  isCapturing = active;
+  document.body.classList.toggle('capturing', active);
+  capture1Btn.disabled = active;
+  capture3Btn.disabled = active;
+  openGalleryBtn.disabled = active;
+}
+
+function cameraReady() {
+  if (preview.videoWidth > 0 && streamIsLive()) return true;
+  showStatus('Camera not ready yet', true);
+  return false;
+}
+
+async function takeSinglePhoto() {
+  if (isCapturing || !cameraReady()) return;
+  setCapturing(true);
+  try {
+    await showCountdown();
+    await triggerFlash();
+    const shot = captureFrame();
+    const saved = await savePhoto(shot.toDataURL('image/jpeg', 0.92), 'single');
+    if (saved) {
+      showStatus('Photo saved!');
+      await loadRecentPhotos();
+    }
+  } finally {
+    setCapturing(false);
+  }
+}
+
+async function takeSeries() {
+  if (isCapturing || !cameraReady()) return;
+  setCapturing(true);
+  try {
+    const timestamp = Date.now();
+    const shots = [];
+
+    await showCountdown();
+    for (let i = 0; i < SERIES_COUNT; i++) {
+      await triggerFlash();
+      const shot = captureFrame();
+      shots.push(shot);
+      await savePhoto(shot.toDataURL('image/jpeg', 0.92), `series-${timestamp}-${i + 1}`);
+      if (i < SERIES_COUNT - 1) {
+        showStatus(`${i + 1} of ${SERIES_COUNT} - next one coming!`);
+        await wait(1200);
+      }
+    }
+
+    // Stack the shots vertically. They already have the same orientation as
+    // single photos, so they are drawn as-is (no second flip).
+    const width = shots[0].width;
+    const slotHeight = Math.round(width * SERIES_ASPECT / SERIES_COUNT);
+    const merged = document.createElement('canvas');
+    merged.width = width;
+    merged.height = slotHeight * SERIES_COUNT;
+    const mCtx = merged.getContext('2d');
+    shots.forEach((shot, i) => drawCover(mCtx, shot, 0, i * slotHeight, width, slotHeight));
+
+    const saved = await savePhoto(merged.toDataURL('image/jpeg', 0.92), `series-${timestamp}-collage`);
+    if (saved) {
+      showStatus('Series saved!');
+      await loadRecentPhotos();
+    }
+  } finally {
+    setCapturing(false);
+  }
+}
+
+capture1Btn.addEventListener('click', () => runAction('capture'));
+capture3Btn.addEventListener('click', () => runAction('series'));
+openGalleryBtn.addEventListener('click', () => runAction('gallery'));
+
+// ===========================================================================
+// Photos: recent strip + gallery mode
+// ===========================================================================
+let galleryPhotos = [];
+let gallerySelected = 0;
+let isGalleryMode = false;
+
+async function fetchPhotos() {
+  try {
+    const response = await fetch('/photos');
+    const photos = await response.json();
+    return photos.sort().reverse(); // newest first (file names contain timestamps)
+  } catch (err) {
+    console.error('Failed to load photos:', err);
+    return [];
+  }
+}
+
+async function loadRecentPhotos() {
+  const photos = (await fetchPhotos()).slice(0, RECENT_COUNT);
+  recentPhotosEl.innerHTML = '';
+  if (photos.length === 0) {
+    recentPhotosEl.innerHTML = '<p class="empty">No photos yet.<br>Take some!</p>';
+    return;
+  }
+  photos.forEach(photo => {
+    const img = document.createElement('img');
+    img.src = `/${photo}`;
+    img.alt = photo;
+    img.title = 'Print this photo';
+    img.addEventListener('click', () => openPrintPreview(photo));
+    recentPhotosEl.appendChild(img);
+  });
+}
+
+async function openGallery() {
+  isGalleryMode = true;
+  galleryView.hidden = false;
+  document.body.classList.add('gallery-open');
+  galleryPhotos = await fetchPhotos();
+  galleryCount.textContent = `(${galleryPhotos.length})`;
+  galleryGrid.innerHTML = '';
+
+  if (galleryPhotos.length === 0) {
+    galleryGrid.innerHTML = '<p class="empty">No photos yet. Take some!</p>';
+  }
+  galleryPhotos.forEach((photo, index) => {
+    const img = document.createElement('img');
+    img.src = `/${photo}`;
+    img.alt = photo;
+    img.loading = 'lazy';
+    img.addEventListener('click', () => {
+      selectGalleryPhoto(index);
+      openPrintPreview(photo);
+    });
+    galleryGrid.appendChild(img);
+  });
+  selectGalleryPhoto(0);
+  renderHints();
+}
+
+function closeGallery() {
+  isGalleryMode = false;
+  galleryView.hidden = true;
+  document.body.classList.remove('gallery-open');
+  galleryGrid.innerHTML = '';
+  renderHints();
+}
+
+function selectGalleryPhoto(index) {
+  if (galleryPhotos.length === 0) return;
+  gallerySelected = Math.max(0, Math.min(index, galleryPhotos.length - 1));
+  const images = galleryGrid.querySelectorAll('img');
+  images.forEach((img, i) => img.classList.toggle('selected', i === gallerySelected));
+  // Only the gallery grid scrolls; the page itself never moves
+  images[gallerySelected].scrollIntoView({ block: 'nearest', inline: 'nearest' });
+}
+
+// Number of columns as actually laid out (counts images in the first row)
+function galleryColumns() {
+  const images = galleryGrid.querySelectorAll('img');
+  if (images.length === 0) return 1;
+  const firstTop = images[0].offsetTop;
+  let columns = 0;
+  for (const img of images) {
+    if (img.offsetTop !== firstTop) break;
+    columns++;
+  }
+  return Math.max(columns, 1);
+}
+
+function moveGallerySelection(direction) {
+  if (galleryPhotos.length === 0) return;
+  const columns = galleryColumns();
+  const count = galleryPhotos.length;
+  let index = gallerySelected;
+  if (direction === 'left') index = (index - 1 + count) % count;
+  if (direction === 'right') index = (index + 1) % count;
+  if (direction === 'up' && index - columns >= 0) index -= columns;
+  if (direction === 'down' && index + columns < count) index += columns;
+  if (index !== gallerySelected) {
+    selectGalleryPhoto(index);
+    playBeep(500, 0.03);
+  }
+}
+
+function openPrintPreview(photo) {
+  PhotoPrint.openPreview(`/${photo}`, { filename: photo });
+  playBeep(1000, 0.05);
+}
+
+// ===========================================================================
+// Settings modal
+// ===========================================================================
+function isSettingsOpen() {
+  return settingsModal.classList.contains('active');
+}
+
+function openSettings() {
+  settingsModal.classList.add('active');
+  printMethodSelect.value = PhotoPrint.getMethod();
+  renderBindingsTable();
+  refreshPrinterInfo();
+  ensureCamera();
+}
+
+function closeSettings() {
+  stopListening();
+  settingsModal.classList.remove('active');
+  renderHints();
+}
+
+async function refreshPrinterInfo() {
+  if (PhotoPrint.getMethod() === 'browser') {
+    printerInfo.textContent = 'Uses the browser default printer. Start Chrome with --kiosk --kiosk-printing to skip the print dialog.';
+    return;
+  }
+  printerInfo.textContent = 'Checking printer...';
+  try {
+    const info = await (await fetch('/print/status')).json();
+    printerInfo.textContent = info.available
+      ? `Printer: ${info.printer || 'none set - run: lpadmin -d <printer>'}${info.media ? ` (media ${info.media})` : ''}`
+      : 'CUPS not found on this laptop - will fall back to browser printing.';
+  } catch (err) {
+    printerInfo.textContent = 'Could not reach the server.';
+  }
+}
+
+settingsBtn.addEventListener('click', () => runAction('settings'));
+closeSettingsBtn.addEventListener('click', closeSettings);
+settingsModal.addEventListener('click', (e) => {
+  if (e.target === settingsModal) closeSettings();
+});
+printMethodSelect.addEventListener('change', () => {
+  PhotoPrint.setMethod(printMethodSelect.value);
+  refreshPrinterInfo();
+});
+
+// ===========================================================================
+// Input: actions and bindings
+// ===========================================================================
+// Every input (keyboard, arcade buttons, on-screen buttons) is turned into one
+// of these actions. What an action does depends on the current screen.
+const ACTIONS = [
+  { id: 'capture', label: 'Single photo / select' },
+  { id: 'series', label: 'Photo series' },
+  { id: 'gallery', label: 'Gallery on / off' },
+  { id: 'print', label: 'Print' },
+  { id: 'download', label: 'Download (print preview)' },
+  { id: 'nextFilter', label: 'Next filter' },
+  { id: 'back', label: 'Back / cancel' },
+  { id: 'settings', label: 'Settings' },
+  { id: 'up', label: 'Up' },
+  { id: 'down', label: 'Down' },
+  { id: 'left', label: 'Left' },
+  { id: 'right', label: 'Right' }
+];
+
+// keys: KeyboardEvent.code values (independent of keyboard layout)
+// buttons: Gamepad API button numbers (see /controller-test)
+const DEFAULT_BINDINGS = {
+  capture: { keys: ['Space', 'Digit1', 'Numpad1'], buttons: [0] },
+  series: { keys: ['KeyB', 'Digit2', 'Numpad2'], buttons: [1] },
+  gallery: { keys: ['KeyX', 'KeyG', 'Digit3', 'Numpad3'], buttons: [2] },
+  print: { keys: ['KeyP', 'Enter', 'NumpadEnter', 'Digit4', 'Numpad4'], buttons: [4] },
+  download: { keys: ['KeyD'], buttons: [] },
+  nextFilter: { keys: ['KeyF'], buttons: [3] },
+  back: { keys: ['Escape', 'Backspace'], buttons: [8] },
+  settings: { keys: ['KeyS'], buttons: [9] },
+  up: { keys: ['ArrowUp'], buttons: [12] },
+  down: { keys: ['ArrowDown'], buttons: [13] },
+  left: { keys: ['ArrowLeft'], buttons: [14] },
+  right: { keys: ['ArrowRight'], buttons: [15] }
 };
 
-// Add Polaroid frame to canvas
-function addPolaroidFrame(sourceCanvas) {
-  const padding = 40;
-  const bottomPadding = 60;
-  const frameWidth = sourceCanvas.width + padding * 2;
-  const frameHeight = sourceCanvas.height + padding * 2 + bottomPadding;
-  
-  const frameCanvas = document.createElement('canvas');
-  frameCanvas.width = frameWidth;
-  frameCanvas.height = frameHeight;
-  const ctx = frameCanvas.getContext('2d');
-  
-  // White background
-  ctx.fillStyle = '#f8f8f8';
-  ctx.fillRect(0, 0, frameWidth, frameHeight);
-  
-  // Add subtle drop shadow for photo
-  ctx.shadowColor = 'rgba(0, 0, 0, 0.15)';
-  ctx.shadowBlur = 8;
-  ctx.shadowOffsetX = 3;
-  ctx.shadowOffsetY = 3;
-  
-  // Draw the photo
-  ctx.drawImage(sourceCanvas, padding, padding, sourceCanvas.width, sourceCanvas.height);
-  
-  // Reset shadow
-  ctx.shadowColor = 'transparent';
-  ctx.shadowBlur = 0;
-  ctx.shadowOffsetX = 0;
-  ctx.shadowOffsetY = 0;
-  
-  // Draw Polaroid-style border (slightly darker white for depth)
-  ctx.strokeStyle = '#e0e0e0';
-  ctx.lineWidth = 1;
-  ctx.strokeRect(padding - 1, padding - 1, sourceCanvas.width + 2, sourceCanvas.height + 2);
-  
-  // Add timestamp at bottom (optional Polaroid look)
-  const timestamp = new Date().toLocaleDateString();
-  ctx.fillStyle = '#999';
-  ctx.font = '12px Arial';
-  ctx.textAlign = 'center';
-  ctx.fillText(timestamp, frameWidth / 2, frameHeight - 20);
-  
-  return frameCanvas;
+const DIRECTIONS = ['up', 'down', 'left', 'right'];
+
+function cloneBindings(source) {
+  return JSON.parse(JSON.stringify(source));
 }
 
-function capture() {
-  const width = preview.videoWidth;
-  const height = preview.videoHeight;
-  canvas.width = width;
-  canvas.height = height;
-  
-  // Apply filter to canvas context
-  ctx.filter = filterPresets[currentFilter];
-  
-  // Note: video is mirrored with scaleX(-1), so we flip it back
-  ctx.save();
-  ctx.scale(-1, 1);
-  ctx.drawImage(preview, -width, 0, width, height);
-  ctx.restore();
-  
-  // Reset filter for next draw
-  ctx.filter = 'none';
-  
-  return canvas;
-}
-
-// Stop current stream
-async function stopStream() {
-  if (stream) {
-    stream.getTracks().forEach(track => track.stop());
-    stream = null;
-  }
-}
-
-// Start camera with specific device
-async function startCamera(deviceId = null) {
-  await stopStream();
-  
-  const constraints = {
-    video: deviceId 
-      ? { deviceId, width: { ideal: 1920 }, height: { ideal: 1080 } }
-      : { facingMode: 'user', width: { ideal: 1920 }, height: { ideal: 1080 } },
-    audio: false
-  };
-  
-  try {
-    stream = await navigator.mediaDevices.getUserMedia(constraints);
-    preview.srcObject = stream;
-    currentDeviceId = deviceId;
-    showStatus(`Camera ready`);
-  } catch (err) {
-    showError('Camera access denied. Please allow camera access.');
-    console.error('Camera error:', err);
-  }
-}
-
-// Populate camera dropdown
-async function populateCameraList() {
-  try {
-    const devices = await navigator.mediaDevices.enumerateDevices();
-    const videoDevices = devices.filter(d => d.kind === 'videoinput');
-    
-    cameraList.innerHTML = '';
-    videoDevices.forEach((device, index) => {
-      const option = document.createElement('option');
-      option.value = device.deviceId;
-      option.text = device.label || `Camera ${index + 1}`;
-      if (index === 0) option.selected = true;
-      cameraList.appendChild(option);
-    });
-    
-    // Start with first camera
-    if (videoDevices.length > 0) {
-      await startCamera(videoDevices[0].deviceId);
-    } else {
-      showStatus('No cameras found', true);
-    }
-  } catch (err) {
-    showError('Could not access camera list.');
-    console.error('Enumerate error:', err);
-  }
-}
-
-// Camera selection change
-cameraList.addEventListener('change', async (e) => {
-  const deviceId = e.target.value;
-  if (deviceId) {
-    await startCamera(deviceId);
-  }
-});
-
-// Refresh camera list
-refreshCamerasBtn.addEventListener('click', async () => {
-  showStatus('Refreshing cameras...');
-  await populateCameraList();
-});
-
-// Settings modal
-settingsBtn.addEventListener('click', () => {
-  settingsModal.classList.add('active');
-});
-
-closeSettingsBtn.addEventListener('click', () => {
-  settingsModal.classList.remove('active');
-});
-
-settingsModal.addEventListener('click', (e) => {
-  if (e.target === settingsModal) {
-    settingsModal.classList.remove('active');
-  }
-});
-
-// Auto-refresh when devices change (e.g., plugging in a new camera)
-if (navigator.mediaDevices && navigator.mediaDevices.ondevicechange) {
-  navigator.mediaDevices.addEventListener('devicechange', async () => {
-    showStatus('Camera device changed - refreshing...');
-    await new Promise(resolve => setTimeout(resolve, 500));
-    await populateCameraList();
-  });
-}
-
-// Filter functions
-function applyFilter(filterName) {
-  // Update current filter
-  currentFilter = filterName;
-  
-  // Remove all filter classes
-  preview.classList.remove('filter-vintage', 'filter-polaroid', 'filter-noir');
-  
-  // Apply the selected filter
-  if (filterName !== 'none') {
-    preview.classList.add(`filter-${filterName}`);
-  }
-  
-  // Update active button state
-  filterButtons.forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.filter === filterName);
-  });
-  
-  showStatus(`Filter: ${filterName}`);
-}
-
-// Set up filter buttons
-filterButtons.forEach(btn => {
-  btn.addEventListener('click', () => {
-    applyFilter(btn.dataset.filter);
-  });
-});
-
-// Series is fixed at 3 stacked photos
-// Initialize series count
-currentCollageCount = seriesCount;
-
-// Single capture with Polaroid frame
-capture1Btn.addEventListener('click', async () => {
-  capture1Btn.disabled = true;
-  capture3Btn.disabled = true;
-  
-  await showCountdown();
-  await triggerFlash();
-  await new Promise(resolve => setTimeout(resolve, 50));
-  
-  const c = capture();
-  // const framed = addPolaroidFrame(c);
-  // const base64 = framed.toDataURL('image/jpeg', 0.9);
-  const base64 = c.toDataURL('image/jpeg', 0.9);
-  await savePhoto(base64, 'single');
-  
-  capture1Btn.disabled = false;
-  capture3Btn.disabled = false;
-});
-
-// Series capture: 3 photos stacked vertically
-capture3Btn.addEventListener('click', async () => {
-  const layout = seriesLayout;
-  const totalShots = seriesCount;
-  showStatus(`Capturing ${totalShots} photos...`);
-  capture3Btn.disabled = true;
-  capture1Btn.disabled = true;
-  
-  const shots = [];
-  const width = preview.videoWidth;
-  const height = preview.videoHeight;
-  const collageTimestamp = Date.now();
-  
-  // Countdown before first shot
-  await showCountdown();
-  
-  // Take multiple shots with flash before each
-  for (let i = 0; i < totalShots; i++) {
-    await triggerFlash();
-    await new Promise(resolve => setTimeout(resolve, 50));
-    const c = capture();
-    const base64 = c.toDataURL('image/jpeg', 0.9);
-    shots.push(base64);
-    
-    // Save each individual shot with sequence number (skip reload for now)
-    await savePhoto(base64, `series-${collageTimestamp}-${i+1}`, true);
-    
-    // Wait between shots (no countdown, just delay)
-    if (i < totalShots - 1) {
-      await new Promise(resolve => setTimeout(resolve, 800));
+function loadBindings() {
+  const saved = loadSetting('bindings', null);
+  const bindings = cloneBindings(DEFAULT_BINDINGS);
+  if (saved && typeof saved === 'object') {
+    for (const id of Object.keys(bindings)) {
+      if (saved[id] && Array.isArray(saved[id].keys) && Array.isArray(saved[id].buttons)) {
+        bindings[id] = { keys: saved[id].keys, buttons: saved[id].buttons };
+      }
     }
   }
-  
-  // Create merged canvas based on layout
-  const merged = document.createElement('canvas');
-  merged.width = width * layout.cols;
-  merged.height = height * layout.rows;
-  const mCtx = merged.getContext('2d');
-  
-  const tempCanvas = document.createElement('canvas');
-  tempCanvas.width = width;
-  tempCanvas.height = height;
-  const tempCtx = tempCanvas.getContext('2d');
-  
-  for (let i = 0; i < totalShots; i++) {
-    const img = new Image();
-    const row = Math.floor(i / layout.cols);
-    const col = i % layout.cols;
-    
-    await new Promise(resolve => {
-      img.onload = () => {
-        tempCtx.save();
-        tempCtx.scale(-1, 1);
-        tempCtx.drawImage(img, -width, 0, width, height);
-        tempCtx.restore();
-        mCtx.drawImage(tempCanvas, col * width, row * height, width, height);
-        resolve();
-      };
-      img.src = shots[i];
+  return bindings;
+}
+
+let bindings = loadBindings();
+
+function actionForKey(code) {
+  return ACTIONS.find(a => bindings[a.id].keys.includes(code))?.id || null;
+}
+
+function actionForButton(index) {
+  return ACTIONS.find(a => bindings[a.id].buttons.includes(index))?.id || null;
+}
+
+const KEY_NAMES = {
+  Space: 'Space', Enter: 'Enter', NumpadEnter: 'Num Enter', Escape: 'Esc', Backspace: 'Backspace',
+  ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→'
+};
+
+function keyName(code) {
+  if (KEY_NAMES[code]) return KEY_NAMES[code];
+  if (code.startsWith('Key')) return code.slice(3);
+  if (code.startsWith('Digit')) return code.slice(5);
+  if (code.startsWith('Numpad')) return `Num ${code.slice(6)}`;
+  return code;
+}
+
+function buttonName(index) {
+  return `Btn ${index}`;
+}
+
+// Short label for hints: first key and first controller button
+function bindingLabel(id) {
+  const parts = [];
+  const b = bindings[id];
+  if (b.keys.length) parts.push(keyName(b.keys[0]));
+  if (b.buttons.length) parts.push(buttonName(b.buttons[0]));
+  return parts.join(' / ');
+}
+
+function hint(label, text) {
+  return `<span class="hint"><kbd>${label}</kbd>${text}</span>`;
+}
+
+function renderHints() {
+  hintBar.innerHTML = [
+    hint(bindingLabel('capture'), 'Photo'),
+    hint(bindingLabel('series'), 'Series'),
+    hint(`${keyName(bindings.left.keys[0] || 'ArrowLeft')} ${keyName(bindings.right.keys[0] || 'ArrowRight')} / Stick`, 'Filter'),
+    hint(bindingLabel('gallery'), 'Gallery & print'),
+    hint(bindingLabel('settings'), 'Settings')
+  ].join('');
+
+  galleryHintBar.innerHTML = [
+    hint('Arrows / Stick', 'Choose'),
+    hint(bindingLabel('print'), 'Print'),
+    hint(bindingLabel('back'), 'Back to camera')
+  ].join('');
+
+  PhotoPrint.setBindingLabels({
+    print: bindingLabel('capture'),
+    download: bindingLabel('series'),
+    back: bindingLabel('back')
+  });
+}
+
+// ---- Rebinding in the settings modal ----
+let listeningFor = null; // action id waiting for a key / button
+
+function renderBindingsTable() {
+  bindingsTable.innerHTML = '';
+  ACTIONS.forEach(action => {
+    const row = document.createElement('div');
+    row.className = 'binding-row';
+
+    const name = document.createElement('span');
+    name.className = 'binding-name';
+    name.textContent = action.label;
+    row.appendChild(name);
+
+    const chips = document.createElement('span');
+    chips.className = 'binding-chips';
+    bindings[action.id].keys.forEach(code => {
+      chips.appendChild(bindingChip(keyName(code), () => removeBinding(action.id, 'keys', code)));
     });
+    bindings[action.id].buttons.forEach(index => {
+      chips.appendChild(bindingChip(buttonName(index), () => removeBinding(action.id, 'buttons', index), true));
+    });
+
+    const add = document.createElement('button');
+    add.className = 'binding-add';
+    add.textContent = listeningFor === action.id ? 'Press a key or button… (Esc cancels)' : '+';
+    add.classList.toggle('listening', listeningFor === action.id);
+    add.addEventListener('click', () => {
+      listeningFor = listeningFor === action.id ? null : action.id;
+      renderBindingsTable();
+    });
+    chips.appendChild(add);
+
+    row.appendChild(chips);
+    bindingsTable.appendChild(row);
+  });
+}
+
+function bindingChip(text, onRemove, isButton = false) {
+  const chip = document.createElement('button');
+  chip.className = `binding-chip${isButton ? ' is-button' : ''}`;
+  chip.textContent = text;
+  chip.title = 'Click to remove';
+  chip.addEventListener('click', onRemove);
+  return chip;
+}
+
+function removeBinding(actionId, type, value) {
+  bindings[actionId][type] = bindings[actionId][type].filter(v => v !== value);
+  saveSetting('bindings', bindings);
+  renderBindingsTable();
+  renderHints();
+}
+
+// Assign a key / button to the action we are listening for. A key or button
+// can only do one thing, so it is removed from any other action.
+function addBinding(type, value) {
+  const actionId = listeningFor;
+  listeningFor = null;
+  for (const id of Object.keys(bindings)) {
+    bindings[id][type] = bindings[id][type].filter(v => v !== value);
   }
-  
-  // Save merged version (this will trigger gallery reload)
-  const base64 = merged.toDataURL('image/jpeg', 0.9);
-  await savePhoto(base64, `series-${collageTimestamp}-collage`);
-  
-  capture3Btn.disabled = false;
-  capture1Btn.disabled = false;
+  bindings[actionId][type].push(value);
+  saveSetting('bindings', bindings);
+  renderBindingsTable();
+  renderHints();
+}
+
+function stopListening() {
+  if (listeningFor) {
+    listeningFor = null;
+    renderBindingsTable();
+  }
+}
+
+resetBindingsBtn.addEventListener('click', () => {
+  bindings = cloneBindings(DEFAULT_BINDINGS);
+  saveSetting('bindings', bindings);
+  listeningFor = null;
+  renderBindingsTable();
+  renderHints();
 });
 
-// Keyboard shortcuts
-function setupKeyboardShortcuts() {
+// ---- Action dispatcher ----
+// `repeat` is true for auto-repeat of a held direction.
+function runAction(id, repeat = false) {
+  // 1. Print preview on top of everything
+  if (PhotoPrint.isOpen()) {
+    if (repeat) return;
+    if (id === 'capture' || id === 'print') PhotoPrint.action('print');
+    else if (id === 'series' || id === 'download') PhotoPrint.action('download');
+    else if (id === 'back' || id === 'gallery') PhotoPrint.action('close');
+    return;
+  }
+
+  // 2. Settings
+  if (isSettingsOpen()) {
+    if (!repeat && (id === 'back' || id === 'settings')) closeSettings();
+    return;
+  }
+
+  // 3. Nothing interrupts a running countdown / capture
+  if (isCapturing) return;
+
+  // 4. Gallery
+  if (isGalleryMode) {
+    if (DIRECTIONS.includes(id)) {
+      moveGallerySelection(id);
+    } else if (repeat) {
+      return;
+    } else if (id === 'capture' || id === 'print') {
+      if (galleryPhotos[gallerySelected]) openPrintPreview(galleryPhotos[gallerySelected]);
+    } else if (id === 'gallery' || id === 'back') {
+      closeGallery();
+      playBeep(800, 0.05);
+    } else if (id === 'settings') {
+      openSettings();
+    }
+    return;
+  }
+
+  // 5. Camera screen
+  if (repeat) return;
+  switch (id) {
+    case 'capture': takeSinglePhoto(); break;
+    case 'series': takeSeries(); break;
+    case 'gallery':
+    case 'print':
+      openGallery();
+      playBeep(800, 0.05);
+      break;
+    case 'nextFilter':
+    case 'right':
+    case 'up':
+      cycleFilter(1);
+      break;
+    case 'left':
+    case 'down':
+      cycleFilter(-1);
+      break;
+    case 'settings':
+      openSettings();
+      playBeep(700, 0.05);
+      break;
+  }
+}
+
+// ---- Keyboard ----
+function setupKeyboard() {
   document.addEventListener('keydown', (e) => {
-    // Ignore if typing in an input/select
-    if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') {
+    if (listeningFor) {
+      e.preventDefault();
+      if (e.code === 'Escape') stopListening();
+      else addBinding('keys', e.code);
       return;
     }
-    
-    // Space bar for single capture
-    if (e.code === 'Space' || e.key === ' ') {
-      e.preventDefault();
-      capture1Btn.click();
+
+    // Let dropdowns in the settings work normally
+    const tag = e.target.tagName;
+    if ((tag === 'SELECT' || tag === 'INPUT' || tag === 'TEXTAREA') && e.code !== 'Escape') {
+      return;
     }
-    
-    // B key for burst capture
-    if (e.key === 'b' || e.key === 'B') {
-      e.preventDefault();
-      capture3Btn.click();
-    }
+
+    const id = actionForKey(e.code);
+    if (!id) return;
+    // preventDefault also stops Space/Enter from "clicking" a focused button,
+    // which used to trigger actions twice
+    e.preventDefault();
+    if (e.repeat && !DIRECTIONS.includes(id)) return;
+    runAction(id, e.repeat);
   });
 }
 
-// Gamepad support for arcade controller
-let currentGamepad = null;
-let gamepadButtons = {};
-let gamepadAxes = {};
+// ---- Gamepad / arcade controller ----
+const AXIS_ON = 0.5;   // stick counts as pushed above this
+const AXIS_OFF = 0.3;  // ... and as released below this (hysteresis against jitter)
+const REPEAT_DELAY = 450;
+const REPEAT_INTERVAL = 160;
 
-// Gamepad button mapping for photobooth
-const GAMEPAD_MAPPING = {
-  SINGLE_PHOTO: 0,    // Typically button 0 (A/South)
-  BURST_PHOTO: 1,    // Typically button 1 (B/East)
-  TOGGLE_MODE: 2,    // Typically button 2 (X/West) - Toggle gallery/photobooth
-  FILTER_NEXT: 2,    // Typically button 2 (X/West) - fallback
-  FILTER_PREV: 3,    // Typically button 3 (Y/North)
-  PRINT: 4,          // Typically button 4 (L1/Left Trigger)
-  SETTINGS: 9,       // Typically button 9 (Start)
-  BACK: 8           // Typically button 8 (Select/Back)
+const gamepadState = {
+  index: null,
+  prevButtons: [],
+  stick: { up: false, down: false, left: false, right: false },
+  held: {} // direction -> next auto-repeat time
 };
 
-// Configurable button mapping (can be customized)
-let gamepadConfig = {
-  singlePhoto: GAMEPAD_MAPPING.SINGLE_PHOTO,
-  burstPhoto: GAMEPAD_MAPPING.BURST_PHOTO,
-  toggleMode: GAMEPAD_MAPPING.TOGGLE_MODE,
-  filterNext: GAMEPAD_MAPPING.FILTER_NEXT,
-  filterPrev: GAMEPAD_MAPPING.FILTER_PREV,
-  print: GAMEPAD_MAPPING.PRINT,
-  settings: GAMEPAD_MAPPING.SETTINGS,
-  back: GAMEPAD_MAPPING.BACK
-};
+// Prefer the DragonRise arcade encoder, otherwise take any connected gamepad
+function pickGamepad() {
+  const pads = Array.from(navigator.getGamepads ? navigator.getGamepads() : []).filter(Boolean);
+  return pads.find(p => /dragonrise/i.test(p.id)) || pads[0] || null;
+}
 
-// Button state tracking to handle press/release
-let buttonWasPressed = {};
+function updateGamepadIndicator(pad) {
+  const connected = !!pad;
+  if (gamepadStatusEl.classList.contains('connected') === connected) return;
+  gamepadStatusEl.classList.toggle('connected', connected);
+  gamepadStatusEl.title = connected
+    ? `Controller ready: ${pad.id}`
+    : 'No controller detected - press any controller button';
+  if (connected) {
+    console.log('Gamepad connected:', pad.id);
+    showStatus('Controller connected');
+  }
+}
 
-// Setup gamepad support
+function onGamepadButton(index) {
+  if (listeningFor) {
+    addBinding('buttons', index);
+    return;
+  }
+  const id = actionForButton(index);
+  if (id) {
+    runAction(id);
+  } else {
+    console.log(`Unbound gamepad button: ${index}`);
+  }
+}
+
+function updateStickDirection(direction, value) {
+  const was = gamepadState.stick[direction];
+  const now = was ? value > AXIS_OFF : value > AXIS_ON;
+  gamepadState.stick[direction] = now;
+  return now;
+}
+
+function pollGamepad(time) {
+  const pad = pickGamepad();
+  updateGamepadIndicator(pad);
+
+  if (pad) {
+    const pressed = pad.buttons.map(b => b.pressed || b.value > 0.5);
+    if (pad.index !== gamepadState.index) {
+      // New controller: ignore buttons that are already held down
+      gamepadState.index = pad.index;
+      gamepadState.prevButtons = pressed;
+    }
+
+    // Edge detection: act on press, never on hold. The previous state is
+    // never reset elsewhere, so opening/closing a dialog cannot make a
+    // still-held button fire a second time.
+    pressed.forEach((isDown, i) => {
+      if (isDown && !gamepadState.prevButtons[i]) onGamepadButton(i);
+    });
+    gamepadState.prevButtons = pressed;
+
+    // Joystick (axes 0/1) acts like the direction keys, with auto-repeat
+    const x = pad.axes[0] || 0;
+    const y = pad.axes[1] || 0;
+    const active = {
+      left: updateStickDirection('left', -x),
+      right: updateStickDirection('right', x),
+      up: updateStickDirection('up', -y),
+      down: updateStickDirection('down', y)
+    };
+    for (const direction of DIRECTIONS) {
+      if (!active[direction]) {
+        delete gamepadState.held[direction];
+      } else if (!(direction in gamepadState.held)) {
+        gamepadState.held[direction] = time + REPEAT_DELAY;
+        if (listeningFor) continue; // the stick is not rebindable
+        runAction(direction);
+      } else if (time >= gamepadState.held[direction]) {
+        gamepadState.held[direction] = time + REPEAT_INTERVAL;
+        if (!listeningFor) runAction(direction, true);
+      }
+    }
+  } else {
+    gamepadState.index = null;
+  }
+
+  requestAnimationFrame(pollGamepad);
+}
+
 function setupGamepad() {
-  // Listen for gamepad connection events
-  window.addEventListener('gamepadconnected', (e) => {
-    console.log('Gamepad connected:', e.gamepad.id);
-    currentGamepad = e.gamepad;
-    showStatus(`Controller connected: ${e.gamepad.id}`);
-    updateGamepadIndicator(true);
-  });
-
+  window.addEventListener('gamepadconnected', (e) => console.log('gamepadconnected:', e.gamepad.id));
   window.addEventListener('gamepaddisconnected', (e) => {
-    console.log('Gamepad disconnected:', e.gamepad.id);
-    currentGamepad = null;
+    console.log('gamepaddisconnected:', e.gamepad.id);
     showStatus('Controller disconnected', true);
-    buttonWasPressed = {};
-    updateGamepadIndicator(false);
   });
-
-  // Main game loop for polling gamepad state
-  function gamepadLoop() {
-    const gamepads = navigator.getGamepads();
-    
-    // Find our gamepad (prefer DragonRise or any connected one)
-    for (const gp of gamepads) {
-      if (gp && (gp.id.includes('DragonRise') || gp.mapping === 'standard' || gamepadButtons[gp.index])) {
-        currentGamepad = gp;
-        gamepadButtons[gp.index] = true;
-        break;
-      }
-    }
-
-    // Process gamepad input if connected
-    if (currentGamepad) {
-      processGamepadInput(currentGamepad);
-    }
-
-    requestAnimationFrame(gamepadLoop);
-  }
-
-  // Start the gamepad polling loop
-  gamepadLoop();
+  requestAnimationFrame(pollGamepad);
 }
 
-// Process gamepad input
-function processGamepadInput(gamepad) {
-  // Process buttons
-  for (let i = 0; i < gamepad.buttons.length; i++) {
-    const button = gamepad.buttons[i];
-    const isPressed = button.pressed || button.value > 0.5;
-    
-    // Check if button state changed from not pressed to pressed
-    if (isPressed && !buttonWasPressed[i]) {
-      handleGamepadButtonDown(i);
-    }
-    
-    buttonWasPressed[i] = isPressed;
-  }
+// ===========================================================================
+// Kiosk niceties
+// ===========================================================================
+// Hide the mouse cursor when it is not being used
+let cursorTimer = null;
+document.addEventListener('mousemove', () => {
+  document.body.classList.remove('hide-cursor');
+  clearTimeout(cursorTimer);
+  cursorTimer = setTimeout(() => document.body.classList.add('hide-cursor'), 3000);
+});
 
-  // Process axes (for D-pad or joystick navigation)
-  for (let i = 0; i < gamepad.axes.length; i++) {
-    gamepadAxes[i] = gamepad.axes[i];
-    handleGamepadAxis(i, gamepad.axes[i]);
-  }
-}
+// Don't keep focus on clicked buttons; Space/Enter belong to the bindings
+document.addEventListener('click', (e) => {
+  const button = e.target.closest('button');
+  if (button && !settingsModal.contains(button)) button.blur();
+});
 
-// Handle gamepad button press
-function handleGamepadButtonDown(buttonIndex) {
-  console.log(`Gamepad button ${buttonIndex} pressed`);
-  
-  // If print preview is open, handle print/download/close
-  if (printPreviewModal && printPreviewModal.classList.contains('active')) {
-    if (buttonIndex === gamepadConfig.singlePhoto) {
-      // Button 0 (A) = Print (requires browser confirmation)
-      const printBtn = document.getElementById('printConfirmBtn');
-      if (printBtn) printBtn.click();
-      playBeep(1200, 0.05);
-    } else if (buttonIndex === gamepadConfig.burstPhoto) {
-      // Button 1 (B) = Download (direct, no confirmation)
-      const downloadBtn = document.getElementById('downloadBtn');
-      if (downloadBtn) downloadBtn.click();
-      playBeep(1000, 0.05);
-    } else if (buttonIndex === gamepadConfig.back) {
-      // Button 8 (Back/Select) = Close preview
-      closePrintPreview();
-      playBeep(800, 0.05);
-    }
-    return;
-  }
-  
-  // If in gallery mode, only allow print, back, and toggle
-  if (isGalleryMode) {
-    if (buttonIndex === gamepadConfig.print) {
-      printSelectedPhoto();
-    } else if (buttonIndex === gamepadConfig.toggleMode || buttonIndex === gamepadConfig.back) {
-      toggleGalleryMode();
-    }
-    return;
-  }
-  
-  // Single photo capture
-  if (buttonIndex === gamepadConfig.singlePhoto) {
-    if (!capture1Btn.disabled) {
-      capture1Btn.click();
-      playBeep(1000, 0.05);
-    }
-  }
-  
-  // Burst photo capture (3 photos)
-  else if (buttonIndex === gamepadConfig.burstPhoto) {
-    if (!capture3Btn.disabled) {
-      capture3Btn.click();
-      playBeep(800, 0.05);
-    }
-  }
-  
-  // Toggle gallery mode
-  else if (buttonIndex === gamepadConfig.toggleMode) {
-    toggleGalleryMode();
-  }
-  
-  // Cycle to next filter
-  else if (buttonIndex === gamepadConfig.filterNext) {
-    cycleFilter('next');
-    playBeep(600, 0.05);
-  }
-  
-  // Cycle to previous filter
-  else if (buttonIndex === gamepadConfig.filterPrev) {
-    cycleFilter('prev');
-    playBeep(600, 0.05);
-  }
-  
-  // Print selected photo
-  else if (buttonIndex === gamepadConfig.print) {
-    toggleGalleryMode(); // In photobooth mode, print button also toggles to gallery
-  }
-  
-  // Open settings
-  else if (buttonIndex === gamepadConfig.settings) {
-    settingsBtn.click();
-    playBeep(700, 0.05);
-  }
-  
-  // Close settings / go back
-  else if (buttonIndex === gamepadConfig.back) {
-    closeSettingsBtn.click();
-    playBeep(500, 0.05);
-  }
-  
-  // Log other buttons for debugging
-  else {
-    console.log(`Unhandled gamepad button: ${buttonIndex}`);
-  }
-}
-
-// Track axis deadzone to prevent drift
-const AXIS_DEADZONE = 0.3;
-
-// Track last axis values for threshold detection
-let lastAxisValues = {};
-
-// Handle gamepad axis movement
-function handleGamepadAxis(axisIndex, value) {
-  // Store current value for next frame
-  gamepadAxes[axisIndex] = value;
-  
-  // Apply deadzone to prevent drift
-  if (Math.abs(value) < AXIS_DEADZONE) {
-    value = 0;
-  }
-
-  const lastValue = lastAxisValues[axisIndex] || 0;
-
-  // Mode-specific axis handling
-  if (isGalleryMode) {
-    // In gallery mode: 
-    // Axis 0 (horizontal): navigate left/right through photos
-    // Axis 1 (vertical): scroll gallery container up/down
-    if (axisIndex === 0) {
-      // Horizontal: next/prev photo
-      if (value > 0.5 && lastValue <= 0.5) {
-        navigateGallery('next');
-        playBeep(500, 0.03);
-      } else if (value < -0.5 && lastValue >= -0.5) {
-        navigateGallery('prev');
-        playBeep(500, 0.03);
-      }
-    }
-    if (axisIndex === 1) {
-      // Vertical: navigate up/down through grid
-      if (value > 0.5 && lastValue <= 0.5) {
-        // Down: select photo below
-        navigateGallery('down');
-        playBeep(500, 0.03);
-      } else if (value < -0.5 && lastValue >= -0.5) {
-        // Up: select photo above
-        navigateGallery('up');
-        playBeep(500, 0.03);
-      }
-    }
-  } else {
-    // In photobooth mode: use axes for filter navigation
-    if (axisIndex === 0) {
-      // Horizontal: next/prev filter
-      if (value > 0.5 && lastValue <= 0.5) {
-        cycleFilter('next');
-        playBeep(600, 0.03);
-      } else if (value < -0.5 && lastValue >= -0.5) {
-        cycleFilter('prev');
-        playBeep(600, 0.03);
-      }
-    }
-    if (axisIndex === 1) {
-      // Vertical: could be used for something else, or also filter nav
-      if (value < -0.5 && lastValue >= -0.5) {
-        cycleFilter('next');
-        playBeep(600, 0.03);
-      } else if (value > 0.5 && lastValue <= 0.5) {
-        cycleFilter('prev');
-        playBeep(600, 0.03);
-      }
-    }
-  }
-  
-  // Store current value for next frame
-  lastAxisValues[axisIndex] = value;
-}
-
-// Navigate through the photo gallery
-function navigateGallery(direction) {
-  if (galleryPhotos.length === 0) {
-    showStatus('No photos in gallery', true);
-    return;
-  }
-  
-  let newIndex;
-  if (direction === 'next') {
-    newIndex = (currentSelectedPhotoIndex + 1) % galleryPhotos.length;
-  } else if (direction === 'prev') {
-    newIndex = (currentSelectedPhotoIndex - 1 + galleryPhotos.length) % galleryPhotos.length;
-  } else if (direction === 'up' || direction === 'down') {
-    // Calculate grid navigation
-    newIndex = navigateGalleryGrid(direction);
-  }
-  
-  if (newIndex !== undefined) {
-    selectPhoto(newIndex);
-  }
-}
-
-// Navigate gallery grid up/down based on current selection
-function navigateGalleryGrid(direction) {
-  if (galleryPhotos.length === 0) return undefined;
-  
-  // Get the grid container to calculate columns
-  const grid = photoGallery;
-  if (!grid) return undefined;
-  
-  // Get computed style to find number of columns
-  const gridStyle = window.getComputedStyle(grid);
-  const gridTemplateColumns = gridStyle.getPropertyValue('grid-template-columns');
-  
-  // Count the number of columns by splitting the template
-  const columns = gridTemplateColumns.split(' ').filter(col => col !== '0px').length;
-  
-  if (columns <= 0) {
-    // Fallback: if we can't determine columns, use simple next/prev
-    return direction === 'down' 
-      ? (currentSelectedPhotoIndex + 1) % galleryPhotos.length
-      : (currentSelectedPhotoIndex - 1 + galleryPhotos.length) % galleryPhotos.length;
-  }
-  
-  const row = Math.floor(currentSelectedPhotoIndex / columns);
-  const col = currentSelectedPhotoIndex % columns;
-  
-  if (direction === 'down') {
-    // Move to same column in next row
-    const newRow = row + 1;
-    const newIndex = newRow * columns + col;
-    if (newIndex < galleryPhotos.length) {
-      return newIndex;
-    }
-    // If we're at the end, wrap or stay
-    return currentSelectedPhotoIndex;
-  } else if (direction === 'up') {
-    // Move to same column in previous row
-    const newRow = row - 1;
-    if (newRow >= 0) {
-      const newIndex = newRow * columns + col;
-      return newIndex;
-    }
-    // If we're at the top, stay
-    return currentSelectedPhotoIndex;
-  }
-  
-  return undefined;
-}
-
-// Cycle through filters
-function cycleFilter(direction) {
-  const filters = ['none', 'vintage', 'polaroid', 'noir'];
-  const currentIndex = filters.indexOf(currentFilter);
-  
-  let newIndex;
-  if (direction === 'next') {
-    newIndex = (currentIndex + 1) % filters.length;
-  } else {
-    newIndex = (currentIndex - 1 + filters.length) % filters.length;
-  }
-  
-  applyFilter(filters[newIndex]);
-}
-
-// Function to set custom button mapping
-function setGamepadMapping(mapping) {
-  gamepadConfig = { ...gamepadConfig, ...mapping };
-}
-
-// Update the gamepad indicator in the UI
-function updateGamepadIndicator(connected) {
-  const indicator = document.getElementById('gamepadStatus');
-  if (indicator) {
-    if (connected) {
-      indicator.textContent = 'Controller';
-      indicator.className = 'gamepad-indicator connected';
-      indicator.title = 'Controller connected and ready';
-    } else {
-      indicator.textContent = '';
-      indicator.className = 'gamepad-indicator';
-      indicator.title = 'Connect a controller';
-    }
-  }
-}
-
-// Initialize
+// ===========================================================================
+// Init
+// ===========================================================================
 async function init() {
-  await populateCameraList();
-  await loadPhotos();
-  setupKeyboardShortcuts();
+  renderHints();
+  setupKeyboard();
   setupGamepad();
+  await Promise.all([initCamera(), loadRecentPhotos()]);
 }
 
-// Start when page loads
 document.addEventListener('DOMContentLoaded', init);
